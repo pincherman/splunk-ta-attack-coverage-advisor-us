@@ -1,0 +1,14 @@
+[]
+export = system
+
+[commands/attackcoverageadvisor]
+export = system
+
+[transforms/attack_coverage_data_sources]
+export = system
+
+[transforms/attack_coverage_detections]
+export = system
+
+[transforms/attack_coverage_detection_data_sources]
+export = system
