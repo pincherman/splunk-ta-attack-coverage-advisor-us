@@ -1,0 +1,1388 @@
+{
+  "title": "DSA++ Maturity Accelerator",
+  "description": "Atelier DSA++ : PvP, risk management, data sources, règles ES, MITRE ATT&CK, roadmap de collecte et sizing contextualisé.",
+  "inputs": {
+    "input_time": {
+      "type": "input.timerange",
+      "title": "Fenêtre d’analyse",
+      "options": {
+        "token": "global_time",
+        "defaultValue": "-30d@d,now"
+      }
+    },
+    "input_limit": {
+      "type": "input.dropdown",
+      "title": "Profondeur",
+      "options": {
+        "token": "result_limit",
+        "defaultValue": "20",
+        "items": [
+          {
+            "label": "10 lignes",
+            "value": "10"
+          },
+          {
+            "label": "20 lignes",
+            "value": "20"
+          },
+          {
+            "label": "50 lignes",
+            "value": "50"
+          }
+        ]
+      }
+    }
+  },
+  "defaults": {
+    "dataSources": {
+      "ds.search": {
+        "options": {}
+      }
+    },
+    "visualizations": {
+      "global": {
+        "showProgressBar": false,
+        "showLastUpdated": false
+      }
+    }
+  },
+  "dataSources": {
+    "dsObservedSources": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=summary | search status=inventory | stats first(technique_count) as value",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsActivableDetections": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=summary | search status=potential | rex field=reason \"(?<activables>\\d+) detections are immediately activable and (?<adjacents>\\d+) are adjacent candidates\" | stats first(activables) as value",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsProjectedTechniques": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=summary | search status=potential | stats first(technique_count) as value",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsMissingSources": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=gaps limit=500 | stats dc(data_source_name) as value",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsOpportunityScore": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=summary | rex field=reason \"(?<activables>\\d+) detections are immediately activable and (?<adjacents>\\d+) are adjacent candidates\" | stats max(eval(if(status=\"potential\", technique_count, null()))) as techniques max(activables) as activables max(adjacents) as adjacents | eval raw=(coalesce(activables,0)*1.5)+(coalesce(techniques,0)*0.25)+(coalesce(adjacents,0)*0.06) | eval value=round(if(raw>100,100,raw),0) | table value",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsContextMode": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=summary | search status=potential | eval lecture=if(es_installed=\"true\",\"ES détecté : adoption + expansion\",\"ES non détecté : projection DSA++ / upsell\") | eval promesse=if(es_installed=\"true\",\"Mesurer les contenus ES activés, activables et sous-exploités.\",\"Prouver la valeur ES avec la télémétrie Splunk déjà collectée.\") | table lecture promesse fenêtre",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsWorkshopFlow": {
+      "type": "ds.search",
+      "options": {
+        "query": "| makeresults | eval étape=\"1. PvP / contexte\", objectif=\"Cadrer risques, priorités SOC, périmètre\", sortie=\"Use cases + périmètre validés\" | append [| makeresults | eval étape=\"2. Inventaire DSA\", objectif=\"Lister sources / sourcetypes / hosts visibles\", sortie=\"Inventaire DSA factuel\"] | append [| makeresults | eval étape=\"3. Sources de données\", objectif=\"Relier l’existant aux familles sécurité\", sortie=\"Sources couvertes / manquantes\"] | append [| makeresults | eval étape=\"4. Contenus ES\", objectif=\"Identifier règles ES activables/proches\", sortie=\"Gains rapides + règles critiques\"] | append [| makeresults | eval étape=\"5. MITRE & risque\", objectif=\"Traduire en comportements adverses\", sortie=\"Lecture MITRE / maturité\"] | append [| makeresults | eval étape=\"6. Roadmap & sizing\", objectif=\"Prioriser collecte et ingestion\", sortie=\"Roadmap + next step ES\"] | table étape objectif sortie",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsDecisionGuide": {
+      "type": "ds.search",
+      "options": {
+        "query": "| makeresults | eval signal=\"Données déjà présentes + règles activables\", lecture=\"Atelier gains rapides ES\", décision=\"Montrer valeur, puis tuning/activation\" | append [| makeresults | eval signal=\"Données présentes mais règles partielles\", lecture=\"Maturité collecte / CIM\", décision=\"Qualifier sources + prérequis TA/CIM\"] | append [| makeresults | eval signal=\"Peu de sources mappées\", lecture=\"Roadmap de collecte\", décision=\"Prioriser 3-5 sources à forte valeur\"] | append [| makeresults | eval signal=\"ES déjà installé\", lecture=\"Adoption / sous-utilisation\", décision=\"Comparer actifs / activables / non exploités\"] | table signal lecture décision",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsRiskQuestions": {
+      "type": "ds.search",
+      "options": {
+        "query": "| makeresults | eval thème=\"Gestion du risque\", question=\"Quels risques détecter / investiguer mieux ?\", preuve=\"Cas d’usage → règle ES → MITRE\" | append [| makeresults | eval thème=\"Sources\", question=\"Quelles données sont visibles / hors radar ?\", preuve=\"Inventaire source/sourcetype + gaps\"] | append [| makeresults | eval thème=\"Use cases\", question=\"Quelles règles activer vite ?\", preuve=\"Gains rapides P1/P2\"] | append [| makeresults | eval thème=\"Maturité SOC\", question=\"Quelle couverture MITRE est crédible ?\", preuve=\"Techniques couvertes / bloquées\"] | append [| makeresults | eval thème=\"Roadmap\", question=\"Quelle source débloque le plus de valeur ?\", preuve=\"Roadmap par valeur détection\"] | table thème question preuve",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsDomainReadiness": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=full limit=1000 include_partial=true | eval domaine=if(len(family)>0,family,\"Non classé\") | stats count(eval(section=\"inventory\")) as sources_observees count(eval(section=\"potential\" AND status=\"activable\")) as regles_activables count(eval(section=\"potential\" AND status=\"partial\")) as regles_proches sum(eval(if(section=\"gaps\", detection_count, 0))) as regles_bloquees dc(eval(if(section=\"potential\", mitre_attack_ids, null()))) as familles_mitre by domaine | eval lecture=case(regles_activables>0,\"Valeur ES immédiate\",regles_proches>0,\"Proche activation\",regles_bloquees>0,\"Dépend de la collecte\",true(),\"A qualifier\") | sort 0 - regles_activables - regles_proches - regles_bloquees | head 12",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsSourceChecklist": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=full limit=1000 include_partial=true | eval statut=case(section=\"inventory\",\"Observée dans Splunk\",section=\"gaps\",\"A intégrer / normaliser\",true(),null()) | where isnotnull(statut) | eval valeur=case(section=\"inventory\",\"Base déjà exploitable\",section=\"gaps\",\"Débloque \" . detection_count . \" détections / \" . technique_count . \" techniques\") | eval action=case(section=\"inventory\",\"Valider qualité, CIM et contexte métier\",section=\"gaps\",\"Onboarder TA / source et réévaluer activation ES\") | rename family as domaine data_source_name as source supported_ta_names as TA supported_ta_versions as version_TA inventory_match as preuve | sort 0 statut domaine source | head $result_limit$ | table statut source domaine TA version_TA preuve valeur action",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsSourceFamilies": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=inventory limit=1000 | stats count as sources by family | rename family as domaine | sort - sources",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsRulesActivable": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=potential limit=500 include_partial=true | eval priorité=case(match_ratio>=1 AND technique_count>=5,\"P1\",match_ratio>=1,\"P2\",match_ratio>=0.5,\"P3\",true(),\"P4\") | eval état=case(match_ratio>=1,\"Activable avec l’existant\",match_ratio>=0.5,\"Presque activable\",true(),\"A qualifier\") | eval atelier=case(match_ratio>=1,\"Tester/tuner/activer dans ES\",match_ratio>=0.5,\"Compléter collecte ou CIM\",true(),\"Backlog cas d’usage\") | rename detection_name as règle_ES family as domaine data_source_name as sources_visibles mitre_attack_ids as MITRE technique_count as techniques | sort 0 priorité - techniques règle_ES | head $result_limit$ | table priorité règle_ES domaine état sources_visibles MITRE techniques atelier",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsRulesByDomain": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=potential limit=500 include_partial=true | search match_ratio>=1 | stats count as règles by family | rename family as domaine | sort - règles",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsMitreTechniques": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=potential limit=1000 include_partial=true | where len(mitre_attack_ids)>0 | makemv delim=\"; \" mitre_attack_ids | mvexpand mitre_attack_ids | eval technique=case(mitre_attack_ids=\"T1190\",\"Exploit Public-Facing Application\",mitre_attack_ids=\"T1562.001\",\"Disable or Modify Tools\",mitre_attack_ids=\"T1112\",\"Modify Registry\",mitre_attack_ids=\"T1059.001\",\"PowerShell\",mitre_attack_ids=\"T1105\",\"Ingress Tool Transfer\",mitre_attack_ids=\"T1110.003\",\"Password Spraying\",mitre_attack_ids=\"T1485\",\"Data Destruction\",mitre_attack_ids=\"T1586.003\",\"Cloud Accounts\",mitre_attack_ids=\"T1133\",\"External Remote Services\",mitre_attack_ids=\"T1548.003\",\"Sudo and Sudo Caching\",mitre_attack_ids=\"T1059\",\"Command and Scripting Interpreter\",mitre_attack_ids=\"T1078\",\"Valid Accounts\",mitre_attack_ids=\"T1566.001\",\"Spearphishing Attachment\",mitre_attack_ids=\"T1098\",\"Account Manipulation\",mitre_attack_ids=\"T1204\",\"User Execution\",mitre_attack_ids=\"T1087.002\",\"Domain Account\",mitre_attack_ids=\"T1055\",\"Process Injection\",mitre_attack_ids=\"T1110\",\"Brute Force\",mitre_attack_ids=\"T1053.005\",\"Scheduled Task\",mitre_attack_ids=\"T1069.002\",\"Domain Groups\",mitre_attack_ids=\"T1195\",\"Supply Chain Compromise\",mitre_attack_ids=\"T1018\",\"Remote System Discovery\",mitre_attack_ids=\"T1047\",\"Windows Management Instrumentation\",mitre_attack_ids=\"T1556\",\"Modify Authentication Process\",mitre_attack_ids=\"T1078.004\",\"Cloud Accounts\",mitre_attack_ids=\"T1136.003\",\"Cloud Account\",mitre_attack_ids=\"T1562.008\",\"Disable or Modify Cloud Logs\",mitre_attack_ids=\"T1098.003\",\"Additional Cloud Roles\",mitre_attack_ids=\"T1543.003\",\"Windows Service\",mitre_attack_ids=\"T1562\",\"Impair Defenses\",mitre_attack_ids=\"T1621\",\"Multi-Factor Authentication Request Generation\",mitre_attack_ids=\"T1204.002\",\"Malicious File\",mitre_attack_ids=\"T1649\",\"Steal or Forge Authentication Certificates\",mitre_attack_ids=\"T1068\",\"Exploitation for Privilege Escalation\",mitre_attack_ids=\"T1218.011\",\"Rundll32\",mitre_attack_ids=\"T1489\",\"Service Stop\",mitre_attack_ids=\"T1021.001\",\"Remote Desktop Protocol\",mitre_attack_ids=\"T1222.001\",\"Windows File and Directory Permissions Modification\",mitre_attack_ids=\"T1082\",\"System Information Discovery\",mitre_attack_ids=\"T1490\",\"Inhibit System Recovery\",mitre_attack_ids=\"T1566\",\"Phishing\",mitre_attack_ids=\"T1548.002\",\"Bypass User Account Control\",mitre_attack_ids=\"T1070.004\",\"File Deletion\",mitre_attack_ids=\"T1505.003\",\"Web Shell\",mitre_attack_ids=\"T1574.001\",\"DLL Search Order Hijacking\",mitre_attack_ids=\"T1033\",\"System Owner/User Discovery\",mitre_attack_ids=\"T1218\",\"System Binary Proxy Execution\",mitre_attack_ids=\"T1059.003\",\"Windows Command Shell\",mitre_attack_ids=\"T1069.001\",\"Local Groups\",mitre_attack_ids=\"T1087.001\",\"Local Account\",mitre_attack_ids=\"T1562.002\",\"Disable Windows Event Logging\",mitre_attack_ids=\"T1136.001\",\"Local Account\",mitre_attack_ids=\"T1482\",\"Domain Trust Discovery\",mitre_attack_ids=\"T1071.001\",\"Web Protocols\",mitre_attack_ids=\"T1110.004\",\"Credential Stuffing\",mitre_attack_ids=\"T1484\",\"Domain or Tenant Policy Modification\",mitre_attack_ids=\"T1218.005\",\"Mshta\",mitre_attack_ids=\"T1219\",\"Remote Access Software\",mitre_attack_ids=\"T1012\",\"Query Registry\",mitre_attack_ids=\"T1110.001\",\"Password Guessing\",mitre_attack_ids=\"T1114.002\",\"Remote Email Collection\",mitre_attack_ids=\"T1562.004\",\"Disable or Modify System Firewall\",mitre_attack_ids=\"T1556.006\",\"Multi-Factor Authentication\",mitre_attack_ids=\"T1003.001\",\"LSASS Memory\",mitre_attack_ids=\"T1027\",\"Obfuscated Files or Information\",mitre_attack_ids=\"T1021.002\",\"SMB/Windows Admin Shares\",mitre_attack_ids=\"T1569.002\",\"Service Execution\",mitre_attack_ids=\"T1203\",\"Exploitation for Client Execution\",mitre_attack_ids=\"T1530\",\"Data from Cloud Storage\",mitre_attack_ids=\"T1041\",\"Exfiltration Over C2 Channel\",mitre_attack_ids=\"T1204.003\",\"Malicious Image\",mitre_attack_ids=\"T1046\",\"Network Service Discovery\",mitre_attack_ids=\"T1567\",\"Exfiltration Over Web Service\",mitre_attack_ids=\"T1053.003\",\"Cron\",mitre_attack_ids=\"T1543\",\"Create or Modify System Process\",mitre_attack_ids=\"T1036.003\",\"Rename System Utilities\",mitre_attack_ids=\"T1021.003\",\"Distributed Component Object Model\",mitre_attack_ids=\"T1200\",\"Hardware Additions\",mitre_attack_ids=\"T1048.003\",\"Exfiltration Over Unencrypted Non-C2 Protocol\",mitre_attack_ids=\"T1185\",\"Browser Session Hijacking\",mitre_attack_ids=\"T1486\",\"Data Encrypted for Impact\",mitre_attack_ids=\"T1201\",\"Password Policy Discovery\",mitre_attack_ids=\"T1566.002\",\"Spearphishing Link\",mitre_attack_ids=\"T1036\",\"Masquerading\",mitre_attack_ids=\"T1016\",\"System Network Configuration Discovery\",mitre_attack_ids=\"T1021.006\",\"Windows Remote Management\",mitre_attack_ids=\"T1547.006\",\"Kernel Modules and Extensions\",mitre_attack_ids=\"T1505.004\",\"IIS Components\",mitre_attack_ids=\"T1070\",\"Indicator Removal\",mitre_attack_ids=\"T1529\",\"System Shutdown/Reboot\",mitre_attack_ids=\"T1526\",\"Cloud Service Discovery\",mitre_attack_ids=\"T1528\",\"Steal Application Access Token\",mitre_attack_ids=\"T1003.002\",\"Security Account Manager\",mitre_attack_ids=\"T1135\",\"Network Share Discovery\",mitre_attack_ids=\"T1003\",\"OS Credential Dumping\",mitre_attack_ids=\"T1049\",\"System Network Connections Discovery\",mitre_attack_ids=\"T1558.003\",\"Kerberoasting\",mitre_attack_ids=\"T1218.007\",\"Msiexec\",mitre_attack_ids=\"T1484.001\",\"Group Policy Modification\",mitre_attack_ids=\"T1071.004\",\"DNS\",mitre_attack_ids=\"T1070.008\",\"Clear Mailbox Data\",mitre_attack_ids=\"T1021.004\",\"SSH\",mitre_attack_ids=\"T1537\",\"Transfer Data to Cloud Account\",mitre_attack_ids=\"T1562.007\",\"Disable or Modify Cloud Firewall\",mitre_attack_ids=\"T1552\",\"Unsecured Credentials\",mitre_attack_ids=\"T1548\",\"Abuse Elevation Control Mechanism\",mitre_attack_ids=\"T1059.005\",\"Visual Basic\",mitre_attack_ids=\"T1497\",\"Virtualization/Sandbox Evasion\",mitre_attack_ids=\"T1547.012\",\"Print Processors\",mitre_attack_ids=\"T1005\",\"Data from Local System\",mitre_attack_ids=\"T1531\",\"Account Access Removal\",mitre_attack_ids=\"T1114.001\",\"Local Email Collection\",mitre_attack_ids=\"T1552.001\",\"Credentials In Files\",mitre_attack_ids=\"T1098.005\",\"Device Registration\",mitre_attack_ids=\"T1498\",\"Network Denial of Service\",mitre_attack_ids=\"T1098.002\",\"Additional Email Delegate Permissions\",mitre_attack_ids=\"T1202\",\"Indirect Command Execution\",mitre_attack_ids=\"T1114.003\",\"Email Forwarding Rule\",mitre_attack_ids=\"T1572\",\"Protocol Tunneling\",mitre_attack_ids=\"T1560.001\",\"Archive via Utility\",mitre_attack_ids=\"T1210\",\"Exploitation of Remote Services\",mitre_attack_ids=\"T1036.005\",\"Match Legitimate Name or Location\",mitre_attack_ids=\"T1003.003\",\"NTDS\",mitre_attack_ids=\"T1078.002\",\"Domain Accounts\",mitre_attack_ids=\"T1218.009\",\"Regsvcs/Regasm\",mitre_attack_ids=\"T1218.010\",\"Regsvr32\",mitre_attack_ids=\"T1558.004\",\"AS-REP Roasting\",mitre_attack_ids=\"T1222\",\"File and Directory Permissions Modification\",mitre_attack_ids=\"T1552.004\",\"Private Keys\",mitre_attack_ids=\"T1059.004\",\"Unix Shell\",mitre_attack_ids=\"T1053\",\"Scheduled Task/Job\",mitre_attack_ids=\"T1207\",\"Rogue Domain Controller\",mitre_attack_ids=\"T1558\",\"Steal or Forge Kerberos Tickets\",mitre_attack_ids=\"T1218.004\",\"InstallUtil\",mitre_attack_ids=\"T1505.001\",\"SQL Stored Procedures\",mitre_attack_ids=\"T1078.003\",\"Local Accounts\",mitre_attack_ids=\"T1218.001\",\"Compiled HTML File\",mitre_attack_ids=\"T1048\",\"Exfiltration Over Alternative Protocol\",mitre_attack_ids=\"T1580\",\"Cloud Infrastructure Discovery\",mitre_attack_ids=\"T1550\",\"Use Alternate Authentication Material\",mitre_attack_ids=\"T1535\",\"Unused/Unsupported Cloud Regions\",mitre_attack_ids=\"T1072\",\"Software Deployment Tools\",mitre_attack_ids=\"T1090\",\"Proxy\",mitre_attack_ids=\"T1197\",\"BITS Jobs\",mitre_attack_ids=\"T1070.001\",\"Clear Windows Event Logs\",mitre_attack_ids=\"T1574.006\",\"Dynamic Linker Hijacking\",mitre_attack_ids=\"T1014\",\"Rootkit\",mitre_attack_ids=\"T1548.001\",\"Setuid and Setgid\",mitre_attack_ids=\"T1555.003\",\"Credentials from Web Browsers\",mitre_attack_ids=\"T1187\",\"Forced Authentication\",mitre_attack_ids=\"T1547.001\",\"Registry Run Keys / Startup Folder\",mitre_attack_ids=\"T1113\",\"Screen Capture\",mitre_attack_ids=\"T1553.005\",\"Mark-of-the-Web Bypass\",mitre_attack_ids=\"T1559\",\"Inter-Process Communication\",mitre_attack_ids=\"T1071\",\"Application Layer Protocol\",mitre_attack_ids=\"T1595.002\",\"Vulnerability Scanning\",mitre_attack_ids=\"T1573.002\",\"Asymmetric Cryptography\",mitre_attack_ids=\"T1590.005\",\"IP Addresses\",mitre_attack_ids=\"T1499\",\"Endpoint Denial of Service\",mitre_attack_ids=\"T1021\",\"Remote Services\",mitre_attack_ids=\"T1555\",\"Credentials from Password Stores\",mitre_attack_ids=\"T1087.004\",\"Cloud Account\",mitre_attack_ids=\"T1571\",\"Non-Standard Port\",mitre_attack_ids=\"T1595\",\"Active Scanning\",mitre_attack_ids=\"T1119\",\"Automated Collection\",mitre_attack_ids=\"T1554\",\"Compromise Host Software Binary\",mitre_attack_ids=\"T1567.002\",\"Exfiltration to Cloud Storage\",mitre_attack_ids=\"T1552.007\",\"Container API\",mitre_attack_ids=\"T1021.007\",\"Cloud Services\",mitre_attack_ids=\"T1218.003\",\"CMSTP\",mitre_attack_ids=\"T1087\",\"Account Discovery\",mitre_attack_ids=\"T1195.002\",\"Compromise Software Supply Chain\",mitre_attack_ids=\"T1059.007\",\"JavaScript\",mitre_attack_ids=\"T1053.002\",\"At\",mitre_attack_ids=\"T1222.002\",\"Linux and Mac File and Directory Permissions Modification\",mitre_attack_ids=\"T1115\",\"Clipboard Data\",mitre_attack_ids=\"T1083\",\"File and Directory Discovery\",mitre_attack_ids=\"T1098.004\",\"SSH Authorized Keys\",mitre_attack_ids=\"T1053.006\",\"Systemd Timers\",mitre_attack_ids=\"T1102\",\"Web Service\",mitre_attack_ids=\"T1136\",\"Create Account\",mitre_attack_ids=\"T1550.003\",\"Pass the Ticket\",mitre_attack_ids=\"T1218.014\",\"MMC\",mitre_attack_ids=\"T1127.001\",\"MSBuild\",mitre_attack_ids=\"T1592\",\"Gather Victim Host Information\",mitre_attack_ids=\"T1134.001\",\"Token Impersonation/Theft\",mitre_attack_ids=\"T1134.005\",\"SID-History Injection\",mitre_attack_ids=\"T1557.001\",\"LLMNR/NBT-NS Poisoning and SMB Relay\",mitre_attack_ids=\"T1136.002\",\"Domain Account\",mitre_attack_ids=\"T1588.002\",\"Tool\",mitre_attack_ids=\"T1091\",\"Replication Through Removable Media\",mitre_attack_ids=\"T1055.002\",\"Portable Executable Injection\",mitre_attack_ids=\"T1036.008\",\"Masquerade File Type\",mitre_attack_ids=\"T1003.008\",\"/etc/passwd and /etc/shadow\",mitre_attack_ids=\"T1078.001\",\"Default Accounts\",mitre_attack_ids=\"T1123\",\"Audio Capture\",mitre_attack_ids=\"T1484.002\",\"Trust Modification\",mitre_attack_ids=\"T1564.008\",\"Email Hiding Rules\",mitre_attack_ids=\"T1552.002\",\"Credentials in Registry\",mitre_attack_ids=\"T1220\",\"XSL Script Processing\",mitre_attack_ids=\"T1560\",\"Archive Collected Data\",mitre_attack_ids=\"T1546.003\",\"Windows Management Instrumentation Event Subscription\",mitre_attack_ids=\"T1127\",\"Trusted Developer Utilities Proxy Execution\",mitre_attack_ids=\"T1564.003\",\"Hidden Window\",mitre_attack_ids=\"T1562.012\",\"Disable or Modify Linux Audit System\",mitre_attack_ids=\"T1030\",\"Data Transfer Size Limits\",mitre_attack_ids=\"T1555.005\",\"Password Managers\",mitre_attack_ids=\"T1546.004\",\"Unix Shell Configuration Modification\",mitre_attack_ids=\"T1055.001\",\"Dynamic-link Library Injection\",mitre_attack_ids=\"T1497.003\",\"Time Based Evasion\",mitre_attack_ids=\"T1546.015\",\"Component Object Model Hijacking\",mitre_attack_ids=\"T1027.011\",\"Fileless Storage\",mitre_attack_ids=\"T1546.011\",\"Application Shimming\",mitre_attack_ids=\"T1546\",\"Event Triggered Execution\",mitre_attack_ids=\"T1003.006\",\"DCSync\",mitre_attack_ids=\"T1564.004\",\"NTFS File Attributes\",mitre_attack_ids=\"T1071.003\",\"Mail Protocols\",mitre_attack_ids=\"T1218.008\",\"Odbcconf\",mitre_attack_ids=\"T1137\",\"Office Application Startup\",mitre_attack_ids=\"T1134\",\"Access Token Manipulation\",mitre_attack_ids=\"T1025\",\"Data from Removable Media\",mitre_attack_ids=\"T1553.003\",\"SIP and Trust Provider Hijacking\",mitre_attack_ids=\"T1557.002\",\"ARP Cache Poisoning\",mitre_attack_ids=\"T1040\",\"Network Sniffing\",mitre_attack_ids=\"T1557\",\"Adversary-in-the-Middle\",mitre_attack_ids=\"T1562.003\",\"Impair Command History Logging\",mitre_attack_ids=\"T1673\",\"T1673\",mitre_attack_ids=\"T1485.001\",\"Lifecycle-Triggered Deletion\",mitre_attack_ids=\"T1069.003\",\"Cloud Groups\",mitre_attack_ids=\"T1098.001\",\"Additional Cloud Credentials\",mitre_attack_ids=\"T1053.007\",\"Container Orchestration Job\",mitre_attack_ids=\"T1212\",\"Exploitation for Credential Access\",mitre_attack_ids=\"T1114\",\"Email Collection\",mitre_attack_ids=\"T1547.014\",\"Active Setup\",mitre_attack_ids=\"T1140\",\"Deobfuscate/Decode Files or Information\",mitre_attack_ids=\"T1611\",\"Escape to Host\",mitre_attack_ids=\"T1020\",\"Automated Exfiltration\",mitre_attack_ids=\"T1036.002\",\"Right-to-Left Override\",mitre_attack_ids=\"T1564.001\",\"Hidden Files and Directories\",mitre_attack_ids=\"T1562.006\",\"Indicator Blocking\",mitre_attack_ids=\"T1589.001\",\"Credentials\",mitre_attack_ids=\"T1095\",\"Non-Application Layer Protocol\",mitre_attack_ids=\"T1491\",\"Defacement\",mitre_attack_ids=\"T1102.002\",\"Bidirectional Communication\",mitre_attack_ids=\"T1027.005\",\"Indicator Removal from Tools\",mitre_attack_ids=\"T1574.011\",\"Services Registry Permissions Weakness\",mitre_attack_ids=\"T1546.012\",\"Image File Execution Options Injection\",mitre_attack_ids=\"T1543.001\",\"Launch Agent\",mitre_attack_ids=\"T1574\",\"Hijack Execution Flow\",mitre_attack_ids=\"T1546.001\",\"Change Default File Association\",mitre_attack_ids=\"T1070.003\",\"Clear Command History\",mitre_attack_ids=\"T1552.006\",\"Group Policy Preferences\",mitre_attack_ids=\"T1204.001\",\"Malicious Link\",mitre_attack_ids=\"T1564\",\"Hide Artifacts\",mitre_attack_ids=\"T1134.004\",\"Parent PID Spoofing\",mitre_attack_ids=\"T1069\",\"Permission Groups Discovery\",mitre_attack_ids=\"T1090.001\",\"Internal Proxy\",mitre_attack_ids=\"T1561.002\",\"Disk Structure Wipe\",mitre_attack_ids=\"T1563.002\",\"RDP Hijacking\",mitre_attack_ids=\"T1505\",\"Server Software Component\",mitre_attack_ids=\"T1036.009\",\"Break Process Trees\",mitre_attack_ids=\"T1090.003\",\"Multi-hop Proxy\",mitre_attack_ids=\"T1573\",\"Encrypted Channel\",mitre_attack_ids=\"T1556.004\",\"Network Device Authentication\",mitre_attack_ids=\"T1590.001\",\"Domain Properties\",mitre_attack_ids=\"T1601.001\",\"Patch System Image\",mitre_attack_ids=\"T1505.006\",\"T1505.006\",mitre_attack_ids=\"T1070.006\",\"Timestomp\",mitre_attack_ids=\"T1550.004\",\"Web Session Cookie\",mitre_attack_ids=\"T1538\",\"Cloud Service Dashboard\",mitre_attack_ids=\"T1539\",\"Steal Web Session Cookie\",mitre_attack_ids=\"T1586\",\"Compromise Accounts\",mitre_attack_ids=\"T1578.002\",\"Create Cloud Instance\",mitre_attack_ids=\"T1578.005\",\"Modify Cloud Compute Configurations\",mitre_attack_ids=\"T1561.001\",\"Disk Content Wipe\",mitre_attack_ids=\"T1213.002\",\"Sharepoint\",mitre_attack_ids=\"T1552.005\",\"Cloud Instance Metadata API\",mitre_attack_ids=\"T1218.002\",\"Control Panel\",mitre_attack_ids=\"T1070.005\",\"Network Share Connection Removal\",mitre_attack_ids=\"T1027.004\",\"Compile After Delivery\",mitre_attack_ids=\"T1574.009\",\"Path Interception by Unquoted Path\",mitre_attack_ids=\"T1558.001\",\"Golden Ticket\",mitre_attack_ids=\"T1589.002\",\"Email Addresses\",mitre_attack_ids=\"T1480\",\"Execution Guardrails\",mitre_attack_ids=\"T1059.013\",\"T1059.013\",mitre_attack_ids=\"T1037.004\",\"RC Scripts\",mitre_attack_ids=\"T1036.004\",\"Masquerade Task or Service\",mitre_attack_ids=\"T1590\",\"Gather Victim Network Information\",mitre_attack_ids=\"T1037.001\",\"Logon Script (Windows)\",mitre_attack_ids=\"T1059.002\",\"AppleScript\",mitre_attack_ids=\"T1553.001\",\"Gatekeeper Bypass\",mitre_attack_ids=\"T1555.001\",\"Keychain\",mitre_attack_ids=\"T1037.002\",\"Login Hook\",mitre_attack_ids=\"T1647\",\"Plist File Modification\",mitre_attack_ids=\"T1547.010\",\"Port Monitors\",mitre_attack_ids=\"T1016.001\",\"Internet Connection Discovery\",mitre_attack_ids=\"T1546.008\",\"Accessibility Features\",mitre_attack_ids=\"T1559.001\",\"Component Object Model\",mitre_attack_ids=\"T1546.002\",\"Screensaver\",mitre_attack_ids=\"T1074.001\",\"Local Data Staging\",mitre_attack_ids=\"T1074\",\"Data Staged\",mitre_attack_ids=\"T1547.003\",\"Time Providers\",mitre_attack_ids=\"T1218.012\",\"Verclsid\",mitre_attack_ids=\"T1134.002\",\"Create Process with Token\",mitre_attack_ids=\"T1547.008\",\"LSASS Driver\",mitre_attack_ids=\"T1218.013\",\"Mavinject\",mitre_attack_ids=\"T1542.001\",\"System Firmware\",mitre_attack_ids=\"T1003.005\",\"Cached Domain Credentials\",mitre_attack_ids=\"T1587.003\",\"Digital Certificates\",mitre_attack_ids=\"T1564.006\",\"Run Virtual Instance\",mitre_attack_ids=\"T1555.004\",\"Windows Credential Manager\",mitre_attack_ids=\"T1595.001\",\"Scanning IP Blocks\",mitre_attack_ids=\"T1176.001\",\"T1176.001\",mitre_attack_ids=\"T1590.002\",\"DNS\",mitre_attack_ids=\"T1654\",\"Log Enumeration\",mitre_attack_ids=\"T1129\",\"Shared Modules\",mitre_attack_ids=\"T1592.001\",\"Hardware\",mitre_attack_ids=\"T1056.002\",\"GUI Input Capture\",mitre_attack_ids=\"T1003.004\",\"LSA Secrets\",mitre_attack_ids=\"T1620\",\"Reflective Code Loading\",mitre_attack_ids=\"T1007\",\"System Service Discovery\",mitre_attack_ids=\"T1039\",\"Data from Network Shared Drive\",mitre_attack_ids=\"T1027.013\",\"Encrypted/Encoded File\",mitre_attack_ids=\"T1008\",\"Fallback Channels\",mitre_attack_ids=\"T1574.014\",\"AppDomainManager\",mitre_attack_ids=\"T1027.010\",\"Command Obfuscation\",mitre_attack_ids=\"T1057\",\"Process Discovery\",mitre_attack_ids=\"T1598.002\",\"Spearphishing Attachment\",mitre_attack_ids=\"T1542\",\"Pre-OS Boot\",mitre_attack_ids=\"T1553.004\",\"Install Root Certificate\",mitre_attack_ids=\"T1547.005\",\"Security Support Provider\",mitre_attack_ids=\"T1059.009\",\"Cloud API\",mitre_attack_ids=\"T1216\",\"System Script Proxy Execution\",mitre_attack_ids=\"T1124\",\"System Time Discovery\",mitre_attack_ids=\"T1547\",\"Boot or Logon Autostart Execution\",mitre_attack_ids=\"T1565.001\",\"Stored Data Manipulation\",mitre_attack_ids=\"T1542.003\",\"Bootkit\",mitre_attack_ids=\"T1587.002\",\"Code Signing Certificates\",mitre_attack_ids=\"T1588.004\",\"Digital Certificates\",mitre_attack_ids=\"T1090.002\",\"External Proxy\",mitre_attack_ids=\"T1587.001\",\"Malware\",mitre_attack_ids=\"T1598\",\"Phishing for Information\",mitre_attack_ids=\"T1583.006\",\"Web Services\",mitre_attack_ids=\"T1189\",\"Drive-by Compromise\",mitre_attack_ids=\"T1071.002\",\"File Transfer Protocols\",mitre_attack_ids=\"T1542.005\",\"TFTP Boot\",mitre_attack_ids=\"T1020.001\",\"Traffic Duplication\",mitre_attack_ids=\"T1498.002\",\"Reflection Amplification\",true(),mitre_attack_ids), tactique=case(mitre_attack_ids=\"T1190\",\"Initial Access\",mitre_attack_ids=\"T1562.001\",\"Defense Evasion\",mitre_attack_ids=\"T1112\",\"Defense Evasion\",mitre_attack_ids=\"T1059.001\",\"Execution\",mitre_attack_ids=\"T1105\",\"Command And Control\",mitre_attack_ids=\"T1110.003\",\"Credential Access\",mitre_attack_ids=\"T1485\",\"Impact\",mitre_attack_ids=\"T1586.003\",\"Resource Development\",mitre_attack_ids=\"T1133\",\"Persistence|Initial Access\",mitre_attack_ids=\"T1548.003\",\"Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1059\",\"Execution\",mitre_attack_ids=\"T1078\",\"Defense Evasion|Persistence|Privilege Escalation|Initial Access\",mitre_attack_ids=\"T1566.001\",\"Initial Access\",mitre_attack_ids=\"T1098\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1204\",\"Execution\",mitre_attack_ids=\"T1087.002\",\"Discovery\",mitre_attack_ids=\"T1055\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1110\",\"Credential Access\",mitre_attack_ids=\"T1053.005\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1069.002\",\"Discovery\",mitre_attack_ids=\"T1195\",\"Initial Access\",mitre_attack_ids=\"T1018\",\"Discovery\",mitre_attack_ids=\"T1047\",\"Execution\",mitre_attack_ids=\"T1556\",\"Credential Access|Defense Evasion|Persistence\",mitre_attack_ids=\"T1078.004\",\"Defense Evasion|Persistence|Privilege Escalation|Initial Access\",mitre_attack_ids=\"T1136.003\",\"Persistence\",mitre_attack_ids=\"T1562.008\",\"Defense Evasion\",mitre_attack_ids=\"T1098.003\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1543.003\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1562\",\"Defense Evasion\",mitre_attack_ids=\"T1621\",\"Credential Access\",mitre_attack_ids=\"T1204.002\",\"Execution\",mitre_attack_ids=\"T1649\",\"Credential Access\",mitre_attack_ids=\"T1068\",\"Privilege Escalation\",mitre_attack_ids=\"T1218.011\",\"Defense Evasion\",mitre_attack_ids=\"T1489\",\"Impact\",mitre_attack_ids=\"T1021.001\",\"Lateral Movement\",mitre_attack_ids=\"T1222.001\",\"Defense Evasion\",mitre_attack_ids=\"T1082\",\"Discovery\",mitre_attack_ids=\"T1490\",\"Impact\",mitre_attack_ids=\"T1566\",\"Initial Access\",mitre_attack_ids=\"T1548.002\",\"Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1070.004\",\"Defense Evasion\",mitre_attack_ids=\"T1505.003\",\"Persistence\",mitre_attack_ids=\"T1574.001\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1033\",\"Discovery\",mitre_attack_ids=\"T1218\",\"Defense Evasion\",mitre_attack_ids=\"T1059.003\",\"Execution\",mitre_attack_ids=\"T1069.001\",\"Discovery\",mitre_attack_ids=\"T1087.001\",\"Discovery\",mitre_attack_ids=\"T1562.002\",\"Defense Evasion\",mitre_attack_ids=\"T1136.001\",\"Persistence\",mitre_attack_ids=\"T1482\",\"Discovery\",mitre_attack_ids=\"T1071.001\",\"Command And Control\",mitre_attack_ids=\"T1110.004\",\"Credential Access\",mitre_attack_ids=\"T1484\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1218.005\",\"Defense Evasion\",mitre_attack_ids=\"T1219\",\"Command And Control\",mitre_attack_ids=\"T1012\",\"Discovery\",mitre_attack_ids=\"T1110.001\",\"Credential Access\",mitre_attack_ids=\"T1114.002\",\"Collection\",mitre_attack_ids=\"T1562.004\",\"Defense Evasion\",mitre_attack_ids=\"T1556.006\",\"Credential Access|Defense Evasion|Persistence\",mitre_attack_ids=\"T1003.001\",\"Credential Access\",mitre_attack_ids=\"T1027\",\"Defense Evasion\",mitre_attack_ids=\"T1021.002\",\"Lateral Movement\",mitre_attack_ids=\"T1569.002\",\"Execution\",mitre_attack_ids=\"T1203\",\"Execution\",mitre_attack_ids=\"T1530\",\"Collection\",mitre_attack_ids=\"T1041\",\"Exfiltration\",mitre_attack_ids=\"T1204.003\",\"Execution\",mitre_attack_ids=\"T1046\",\"Discovery\",mitre_attack_ids=\"T1567\",\"Exfiltration\",mitre_attack_ids=\"T1053.003\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1543\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1036.003\",\"Defense Evasion\",mitre_attack_ids=\"T1021.003\",\"Lateral Movement\",mitre_attack_ids=\"T1200\",\"Initial Access\",mitre_attack_ids=\"T1048.003\",\"Exfiltration\",mitre_attack_ids=\"T1185\",\"Collection\",mitre_attack_ids=\"T1486\",\"Impact\",mitre_attack_ids=\"T1201\",\"Discovery\",mitre_attack_ids=\"T1566.002\",\"Initial Access\",mitre_attack_ids=\"T1036\",\"Defense Evasion\",mitre_attack_ids=\"T1016\",\"Discovery\",mitre_attack_ids=\"T1021.006\",\"Lateral Movement\",mitre_attack_ids=\"T1547.006\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1505.004\",\"Persistence\",mitre_attack_ids=\"T1070\",\"Defense Evasion\",mitre_attack_ids=\"T1529\",\"Impact\",mitre_attack_ids=\"T1526\",\"Discovery\",mitre_attack_ids=\"T1528\",\"Credential Access\",mitre_attack_ids=\"T1003.002\",\"Credential Access\",mitre_attack_ids=\"T1135\",\"Discovery\",mitre_attack_ids=\"T1003\",\"Credential Access\",mitre_attack_ids=\"T1049\",\"Discovery\",mitre_attack_ids=\"T1558.003\",\"Credential Access\",mitre_attack_ids=\"T1218.007\",\"Defense Evasion\",mitre_attack_ids=\"T1484.001\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1071.004\",\"Command And Control\",mitre_attack_ids=\"T1070.008\",\"Defense Evasion\",mitre_attack_ids=\"T1021.004\",\"Lateral Movement\",mitre_attack_ids=\"T1537\",\"Exfiltration\",mitre_attack_ids=\"T1562.007\",\"Defense Evasion\",mitre_attack_ids=\"T1552\",\"Credential Access\",mitre_attack_ids=\"T1548\",\"Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1059.005\",\"Execution\",mitre_attack_ids=\"T1497\",\"Defense Evasion|Discovery\",mitre_attack_ids=\"T1547.012\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1005\",\"Collection\",mitre_attack_ids=\"T1531\",\"Impact\",mitre_attack_ids=\"T1114.001\",\"Collection\",mitre_attack_ids=\"T1552.001\",\"Credential Access\",mitre_attack_ids=\"T1098.005\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1498\",\"Impact\",mitre_attack_ids=\"T1098.002\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1202\",\"Defense Evasion\",mitre_attack_ids=\"T1114.003\",\"Collection\",mitre_attack_ids=\"T1572\",\"Command And Control\",mitre_attack_ids=\"T1560.001\",\"Collection\",mitre_attack_ids=\"T1210\",\"Lateral Movement\",mitre_attack_ids=\"T1036.005\",\"Defense Evasion\",mitre_attack_ids=\"T1003.003\",\"Credential Access\",mitre_attack_ids=\"T1078.002\",\"Defense Evasion|Persistence|Privilege Escalation|Initial Access\",mitre_attack_ids=\"T1218.009\",\"Defense Evasion\",mitre_attack_ids=\"T1218.010\",\"Defense Evasion\",mitre_attack_ids=\"T1558.004\",\"Credential Access\",mitre_attack_ids=\"T1222\",\"Defense Evasion\",mitre_attack_ids=\"T1552.004\",\"Credential Access\",mitre_attack_ids=\"T1059.004\",\"Execution\",mitre_attack_ids=\"T1053\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1207\",\"Defense Evasion\",mitre_attack_ids=\"T1558\",\"Credential Access\",mitre_attack_ids=\"T1218.004\",\"Defense Evasion\",mitre_attack_ids=\"T1505.001\",\"Persistence\",mitre_attack_ids=\"T1078.003\",\"Defense Evasion|Persistence|Privilege Escalation|Initial Access\",mitre_attack_ids=\"T1218.001\",\"Defense Evasion\",mitre_attack_ids=\"T1048\",\"Exfiltration\",mitre_attack_ids=\"T1580\",\"Discovery\",mitre_attack_ids=\"T1550\",\"Defense Evasion|Lateral Movement\",mitre_attack_ids=\"T1535\",\"Defense Evasion\",mitre_attack_ids=\"T1072\",\"Execution|Lateral Movement\",mitre_attack_ids=\"T1090\",\"Command And Control\",mitre_attack_ids=\"T1197\",\"Defense Evasion|Persistence\",mitre_attack_ids=\"T1070.001\",\"Defense Evasion\",mitre_attack_ids=\"T1574.006\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1014\",\"Defense Evasion\",mitre_attack_ids=\"T1548.001\",\"Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1555.003\",\"Credential Access\",mitre_attack_ids=\"T1187\",\"Credential Access\",mitre_attack_ids=\"T1547.001\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1113\",\"Collection\",mitre_attack_ids=\"T1553.005\",\"Defense Evasion\",mitre_attack_ids=\"T1559\",\"Execution\",mitre_attack_ids=\"T1071\",\"Command And Control\",mitre_attack_ids=\"T1595.002\",\"Reconnaissance\",mitre_attack_ids=\"T1573.002\",\"Command And Control\",mitre_attack_ids=\"T1590.005\",\"Reconnaissance\",mitre_attack_ids=\"T1499\",\"Impact\",mitre_attack_ids=\"T1021\",\"Lateral Movement\",mitre_attack_ids=\"T1555\",\"Credential Access\",mitre_attack_ids=\"T1087.004\",\"Discovery\",mitre_attack_ids=\"T1571\",\"Command And Control\",mitre_attack_ids=\"T1595\",\"Reconnaissance\",mitre_attack_ids=\"T1119\",\"Collection\",mitre_attack_ids=\"T1554\",\"Persistence\",mitre_attack_ids=\"T1567.002\",\"Exfiltration\",mitre_attack_ids=\"T1552.007\",\"Credential Access\",mitre_attack_ids=\"T1021.007\",\"Lateral Movement\",mitre_attack_ids=\"T1218.003\",\"Defense Evasion\",mitre_attack_ids=\"T1087\",\"Discovery\",mitre_attack_ids=\"T1195.002\",\"Initial Access\",mitre_attack_ids=\"T1059.007\",\"Execution\",mitre_attack_ids=\"T1053.002\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1222.002\",\"Defense Evasion\",mitre_attack_ids=\"T1115\",\"Collection\",mitre_attack_ids=\"T1083\",\"Discovery\",mitre_attack_ids=\"T1098.004\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1053.006\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1102\",\"Command And Control\",mitre_attack_ids=\"T1136\",\"Persistence\",mitre_attack_ids=\"T1550.003\",\"Defense Evasion|Lateral Movement\",mitre_attack_ids=\"T1218.014\",\"Defense Evasion\",mitre_attack_ids=\"T1127.001\",\"Defense Evasion\",mitre_attack_ids=\"T1592\",\"Reconnaissance\",mitre_attack_ids=\"T1134.001\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1134.005\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1557.001\",\"Credential Access|Collection\",mitre_attack_ids=\"T1136.002\",\"Persistence\",mitre_attack_ids=\"T1588.002\",\"Resource Development\",mitre_attack_ids=\"T1091\",\"Lateral Movement|Initial Access\",mitre_attack_ids=\"T1055.002\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1036.008\",\"Defense Evasion\",mitre_attack_ids=\"T1003.008\",\"Credential Access\",mitre_attack_ids=\"T1078.001\",\"Defense Evasion|Persistence|Privilege Escalation|Initial Access\",mitre_attack_ids=\"T1123\",\"Collection\",mitre_attack_ids=\"T1484.002\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1564.008\",\"Defense Evasion\",mitre_attack_ids=\"T1552.002\",\"Credential Access\",mitre_attack_ids=\"T1220\",\"Defense Evasion\",mitre_attack_ids=\"T1560\",\"Collection\",mitre_attack_ids=\"T1546.003\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1127\",\"Defense Evasion\",mitre_attack_ids=\"T1564.003\",\"Defense Evasion\",mitre_attack_ids=\"T1562.012\",\"Defense Evasion\",mitre_attack_ids=\"T1030\",\"Exfiltration\",mitre_attack_ids=\"T1555.005\",\"Credential Access\",mitre_attack_ids=\"T1546.004\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1055.001\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1497.003\",\"Defense Evasion|Discovery\",mitre_attack_ids=\"T1546.015\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1027.011\",\"Defense Evasion\",mitre_attack_ids=\"T1546.011\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1546\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1003.006\",\"Credential Access\",mitre_attack_ids=\"T1564.004\",\"Defense Evasion\",mitre_attack_ids=\"T1071.003\",\"Command And Control\",mitre_attack_ids=\"T1218.008\",\"Defense Evasion\",mitre_attack_ids=\"T1137\",\"Persistence\",mitre_attack_ids=\"T1134\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1025\",\"Collection\",mitre_attack_ids=\"T1553.003\",\"Defense Evasion\",mitre_attack_ids=\"T1557.002\",\"Credential Access|Collection\",mitre_attack_ids=\"T1040\",\"Credential Access|Discovery\",mitre_attack_ids=\"T1557\",\"Credential Access|Collection\",mitre_attack_ids=\"T1562.003\",\"Defense Evasion\",mitre_attack_ids=\"T1673\",\"Tactique à qualifier\",mitre_attack_ids=\"T1485.001\",\"Impact\",mitre_attack_ids=\"T1069.003\",\"Discovery\",mitre_attack_ids=\"T1098.001\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1053.007\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1212\",\"Credential Access\",mitre_attack_ids=\"T1114\",\"Collection\",mitre_attack_ids=\"T1547.014\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1140\",\"Defense Evasion\",mitre_attack_ids=\"T1611\",\"Privilege Escalation\",mitre_attack_ids=\"T1020\",\"Exfiltration\",mitre_attack_ids=\"T1036.002\",\"Defense Evasion\",mitre_attack_ids=\"T1564.001\",\"Defense Evasion\",mitre_attack_ids=\"T1562.006\",\"Defense Evasion\",mitre_attack_ids=\"T1589.001\",\"Reconnaissance\",mitre_attack_ids=\"T1095\",\"Command And Control\",mitre_attack_ids=\"T1491\",\"Impact\",mitre_attack_ids=\"T1102.002\",\"Command And Control\",mitre_attack_ids=\"T1027.005\",\"Defense Evasion\",mitre_attack_ids=\"T1574.011\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1546.012\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1543.001\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1574\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1546.001\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1070.003\",\"Defense Evasion\",mitre_attack_ids=\"T1552.006\",\"Credential Access\",mitre_attack_ids=\"T1204.001\",\"Execution\",mitre_attack_ids=\"T1564\",\"Defense Evasion\",mitre_attack_ids=\"T1134.004\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1069\",\"Discovery\",mitre_attack_ids=\"T1090.001\",\"Command And Control\",mitre_attack_ids=\"T1561.002\",\"Impact\",mitre_attack_ids=\"T1563.002\",\"Lateral Movement\",mitre_attack_ids=\"T1505\",\"Persistence\",mitre_attack_ids=\"T1036.009\",\"Defense Evasion\",mitre_attack_ids=\"T1090.003\",\"Command And Control\",mitre_attack_ids=\"T1573\",\"Command And Control\",mitre_attack_ids=\"T1556.004\",\"Credential Access|Defense Evasion|Persistence\",mitre_attack_ids=\"T1590.001\",\"Reconnaissance\",mitre_attack_ids=\"T1601.001\",\"Defense Evasion\",mitre_attack_ids=\"T1505.006\",\"Tactique à qualifier\",mitre_attack_ids=\"T1070.006\",\"Defense Evasion\",mitre_attack_ids=\"T1550.004\",\"Defense Evasion|Lateral Movement\",mitre_attack_ids=\"T1538\",\"Discovery\",mitre_attack_ids=\"T1539\",\"Credential Access\",mitre_attack_ids=\"T1586\",\"Resource Development\",mitre_attack_ids=\"T1578.002\",\"Defense Evasion\",mitre_attack_ids=\"T1578.005\",\"Defense Evasion\",mitre_attack_ids=\"T1561.001\",\"Impact\",mitre_attack_ids=\"T1213.002\",\"Collection\",mitre_attack_ids=\"T1552.005\",\"Credential Access\",mitre_attack_ids=\"T1218.002\",\"Defense Evasion\",mitre_attack_ids=\"T1070.005\",\"Defense Evasion\",mitre_attack_ids=\"T1027.004\",\"Defense Evasion\",mitre_attack_ids=\"T1574.009\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1558.001\",\"Credential Access\",mitre_attack_ids=\"T1589.002\",\"Reconnaissance\",mitre_attack_ids=\"T1480\",\"Defense Evasion\",mitre_attack_ids=\"T1059.013\",\"Tactique à qualifier\",mitre_attack_ids=\"T1037.004\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1036.004\",\"Defense Evasion\",mitre_attack_ids=\"T1590\",\"Reconnaissance\",mitre_attack_ids=\"T1037.001\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1059.002\",\"Execution\",mitre_attack_ids=\"T1553.001\",\"Defense Evasion\",mitre_attack_ids=\"T1555.001\",\"Credential Access\",mitre_attack_ids=\"T1037.002\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1647\",\"Defense Evasion\",mitre_attack_ids=\"T1547.010\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1016.001\",\"Discovery\",mitre_attack_ids=\"T1546.008\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1559.001\",\"Execution\",mitre_attack_ids=\"T1546.002\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1074.001\",\"Collection\",mitre_attack_ids=\"T1074\",\"Collection\",mitre_attack_ids=\"T1547.003\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1218.012\",\"Defense Evasion\",mitre_attack_ids=\"T1134.002\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1547.008\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1218.013\",\"Defense Evasion\",mitre_attack_ids=\"T1542.001\",\"Persistence|Defense Evasion\",mitre_attack_ids=\"T1003.005\",\"Credential Access\",mitre_attack_ids=\"T1587.003\",\"Resource Development\",mitre_attack_ids=\"T1564.006\",\"Defense Evasion\",mitre_attack_ids=\"T1555.004\",\"Credential Access\",mitre_attack_ids=\"T1595.001\",\"Reconnaissance\",mitre_attack_ids=\"T1176.001\",\"Tactique à qualifier\",mitre_attack_ids=\"T1590.002\",\"Reconnaissance\",mitre_attack_ids=\"T1654\",\"Discovery\",mitre_attack_ids=\"T1129\",\"Execution\",mitre_attack_ids=\"T1592.001\",\"Reconnaissance\",mitre_attack_ids=\"T1056.002\",\"Collection|Credential Access\",mitre_attack_ids=\"T1003.004\",\"Credential Access\",mitre_attack_ids=\"T1620\",\"Defense Evasion\",mitre_attack_ids=\"T1007\",\"Discovery\",mitre_attack_ids=\"T1039\",\"Collection\",mitre_attack_ids=\"T1027.013\",\"Defense Evasion\",mitre_attack_ids=\"T1008\",\"Command And Control\",mitre_attack_ids=\"T1574.014\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1027.010\",\"Defense Evasion\",mitre_attack_ids=\"T1057\",\"Discovery\",mitre_attack_ids=\"T1598.002\",\"Reconnaissance\",mitre_attack_ids=\"T1542\",\"Defense Evasion|Persistence\",mitre_attack_ids=\"T1553.004\",\"Defense Evasion\",mitre_attack_ids=\"T1547.005\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1059.009\",\"Execution\",mitre_attack_ids=\"T1216\",\"Defense Evasion\",mitre_attack_ids=\"T1124\",\"Discovery\",mitre_attack_ids=\"T1547\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1565.001\",\"Impact\",mitre_attack_ids=\"T1542.003\",\"Persistence|Defense Evasion\",mitre_attack_ids=\"T1587.002\",\"Resource Development\",mitre_attack_ids=\"T1588.004\",\"Resource Development\",mitre_attack_ids=\"T1090.002\",\"Command And Control\",mitre_attack_ids=\"T1587.001\",\"Resource Development\",mitre_attack_ids=\"T1598\",\"Reconnaissance\",mitre_attack_ids=\"T1583.006\",\"Resource Development\",mitre_attack_ids=\"T1189\",\"Initial Access\",mitre_attack_ids=\"T1071.002\",\"Command And Control\",mitre_attack_ids=\"T1542.005\",\"Defense Evasion|Persistence\",mitre_attack_ids=\"T1020.001\",\"Exfiltration\",mitre_attack_ids=\"T1498.002\",\"Impact\",true(),\"Tactique à qualifier\") | eval activable=if(match_ratio>=1,1,0) | stats count as règles sum(activable) as activables values(family) as domaines values(data_source_name) as sources values(detection_name) as exemples by mitre_attack_ids technique tactique | eval lecture=if(activables>0,\"Couverture immédiate à discuter\",\"A débloquer via collecte\") | eval exemples=mvjoin(mvindex(exemples,0,2),\" | \"), sources=mvjoin(mvindex(sources,0,4),\" | \"), domaines=mvjoin(domaines,\" | \") | sort 0 - activables - règles technique | head $result_limit$ | table mitre_attack_ids technique tactique règles activables domaines sources exemples lecture",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsMitreTactics": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=potential limit=1000 include_partial=true | where len(mitre_attack_ids)>0 | makemv delim=\"; \" mitre_attack_ids | mvexpand mitre_attack_ids | eval tactique=case(mitre_attack_ids=\"T1190\",\"Initial Access\",mitre_attack_ids=\"T1562.001\",\"Defense Evasion\",mitre_attack_ids=\"T1112\",\"Defense Evasion\",mitre_attack_ids=\"T1059.001\",\"Execution\",mitre_attack_ids=\"T1105\",\"Command And Control\",mitre_attack_ids=\"T1110.003\",\"Credential Access\",mitre_attack_ids=\"T1485\",\"Impact\",mitre_attack_ids=\"T1586.003\",\"Resource Development\",mitre_attack_ids=\"T1133\",\"Persistence|Initial Access\",mitre_attack_ids=\"T1548.003\",\"Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1059\",\"Execution\",mitre_attack_ids=\"T1078\",\"Defense Evasion|Persistence|Privilege Escalation|Initial Access\",mitre_attack_ids=\"T1566.001\",\"Initial Access\",mitre_attack_ids=\"T1098\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1204\",\"Execution\",mitre_attack_ids=\"T1087.002\",\"Discovery\",mitre_attack_ids=\"T1055\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1110\",\"Credential Access\",mitre_attack_ids=\"T1053.005\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1069.002\",\"Discovery\",mitre_attack_ids=\"T1195\",\"Initial Access\",mitre_attack_ids=\"T1018\",\"Discovery\",mitre_attack_ids=\"T1047\",\"Execution\",mitre_attack_ids=\"T1556\",\"Credential Access|Defense Evasion|Persistence\",mitre_attack_ids=\"T1078.004\",\"Defense Evasion|Persistence|Privilege Escalation|Initial Access\",mitre_attack_ids=\"T1136.003\",\"Persistence\",mitre_attack_ids=\"T1562.008\",\"Defense Evasion\",mitre_attack_ids=\"T1098.003\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1543.003\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1562\",\"Defense Evasion\",mitre_attack_ids=\"T1621\",\"Credential Access\",mitre_attack_ids=\"T1204.002\",\"Execution\",mitre_attack_ids=\"T1649\",\"Credential Access\",mitre_attack_ids=\"T1068\",\"Privilege Escalation\",mitre_attack_ids=\"T1218.011\",\"Defense Evasion\",mitre_attack_ids=\"T1489\",\"Impact\",mitre_attack_ids=\"T1021.001\",\"Lateral Movement\",mitre_attack_ids=\"T1222.001\",\"Defense Evasion\",mitre_attack_ids=\"T1082\",\"Discovery\",mitre_attack_ids=\"T1490\",\"Impact\",mitre_attack_ids=\"T1566\",\"Initial Access\",mitre_attack_ids=\"T1548.002\",\"Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1070.004\",\"Defense Evasion\",mitre_attack_ids=\"T1505.003\",\"Persistence\",mitre_attack_ids=\"T1574.001\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1033\",\"Discovery\",mitre_attack_ids=\"T1218\",\"Defense Evasion\",mitre_attack_ids=\"T1059.003\",\"Execution\",mitre_attack_ids=\"T1069.001\",\"Discovery\",mitre_attack_ids=\"T1087.001\",\"Discovery\",mitre_attack_ids=\"T1562.002\",\"Defense Evasion\",mitre_attack_ids=\"T1136.001\",\"Persistence\",mitre_attack_ids=\"T1482\",\"Discovery\",mitre_attack_ids=\"T1071.001\",\"Command And Control\",mitre_attack_ids=\"T1110.004\",\"Credential Access\",mitre_attack_ids=\"T1484\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1218.005\",\"Defense Evasion\",mitre_attack_ids=\"T1219\",\"Command And Control\",mitre_attack_ids=\"T1012\",\"Discovery\",mitre_attack_ids=\"T1110.001\",\"Credential Access\",mitre_attack_ids=\"T1114.002\",\"Collection\",mitre_attack_ids=\"T1562.004\",\"Defense Evasion\",mitre_attack_ids=\"T1556.006\",\"Credential Access|Defense Evasion|Persistence\",mitre_attack_ids=\"T1003.001\",\"Credential Access\",mitre_attack_ids=\"T1027\",\"Defense Evasion\",mitre_attack_ids=\"T1021.002\",\"Lateral Movement\",mitre_attack_ids=\"T1569.002\",\"Execution\",mitre_attack_ids=\"T1203\",\"Execution\",mitre_attack_ids=\"T1530\",\"Collection\",mitre_attack_ids=\"T1041\",\"Exfiltration\",mitre_attack_ids=\"T1204.003\",\"Execution\",mitre_attack_ids=\"T1046\",\"Discovery\",mitre_attack_ids=\"T1567\",\"Exfiltration\",mitre_attack_ids=\"T1053.003\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1543\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1036.003\",\"Defense Evasion\",mitre_attack_ids=\"T1021.003\",\"Lateral Movement\",mitre_attack_ids=\"T1200\",\"Initial Access\",mitre_attack_ids=\"T1048.003\",\"Exfiltration\",mitre_attack_ids=\"T1185\",\"Collection\",mitre_attack_ids=\"T1486\",\"Impact\",mitre_attack_ids=\"T1201\",\"Discovery\",mitre_attack_ids=\"T1566.002\",\"Initial Access\",mitre_attack_ids=\"T1036\",\"Defense Evasion\",mitre_attack_ids=\"T1016\",\"Discovery\",mitre_attack_ids=\"T1021.006\",\"Lateral Movement\",mitre_attack_ids=\"T1547.006\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1505.004\",\"Persistence\",mitre_attack_ids=\"T1070\",\"Defense Evasion\",mitre_attack_ids=\"T1529\",\"Impact\",mitre_attack_ids=\"T1526\",\"Discovery\",mitre_attack_ids=\"T1528\",\"Credential Access\",mitre_attack_ids=\"T1003.002\",\"Credential Access\",mitre_attack_ids=\"T1135\",\"Discovery\",mitre_attack_ids=\"T1003\",\"Credential Access\",mitre_attack_ids=\"T1049\",\"Discovery\",mitre_attack_ids=\"T1558.003\",\"Credential Access\",mitre_attack_ids=\"T1218.007\",\"Defense Evasion\",mitre_attack_ids=\"T1484.001\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1071.004\",\"Command And Control\",mitre_attack_ids=\"T1070.008\",\"Defense Evasion\",mitre_attack_ids=\"T1021.004\",\"Lateral Movement\",mitre_attack_ids=\"T1537\",\"Exfiltration\",mitre_attack_ids=\"T1562.007\",\"Defense Evasion\",mitre_attack_ids=\"T1552\",\"Credential Access\",mitre_attack_ids=\"T1548\",\"Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1059.005\",\"Execution\",mitre_attack_ids=\"T1497\",\"Defense Evasion|Discovery\",mitre_attack_ids=\"T1547.012\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1005\",\"Collection\",mitre_attack_ids=\"T1531\",\"Impact\",mitre_attack_ids=\"T1114.001\",\"Collection\",mitre_attack_ids=\"T1552.001\",\"Credential Access\",mitre_attack_ids=\"T1098.005\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1498\",\"Impact\",mitre_attack_ids=\"T1098.002\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1202\",\"Defense Evasion\",mitre_attack_ids=\"T1114.003\",\"Collection\",mitre_attack_ids=\"T1572\",\"Command And Control\",mitre_attack_ids=\"T1560.001\",\"Collection\",mitre_attack_ids=\"T1210\",\"Lateral Movement\",mitre_attack_ids=\"T1036.005\",\"Defense Evasion\",mitre_attack_ids=\"T1003.003\",\"Credential Access\",mitre_attack_ids=\"T1078.002\",\"Defense Evasion|Persistence|Privilege Escalation|Initial Access\",mitre_attack_ids=\"T1218.009\",\"Defense Evasion\",mitre_attack_ids=\"T1218.010\",\"Defense Evasion\",mitre_attack_ids=\"T1558.004\",\"Credential Access\",mitre_attack_ids=\"T1222\",\"Defense Evasion\",mitre_attack_ids=\"T1552.004\",\"Credential Access\",mitre_attack_ids=\"T1059.004\",\"Execution\",mitre_attack_ids=\"T1053\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1207\",\"Defense Evasion\",mitre_attack_ids=\"T1558\",\"Credential Access\",mitre_attack_ids=\"T1218.004\",\"Defense Evasion\",mitre_attack_ids=\"T1505.001\",\"Persistence\",mitre_attack_ids=\"T1078.003\",\"Defense Evasion|Persistence|Privilege Escalation|Initial Access\",mitre_attack_ids=\"T1218.001\",\"Defense Evasion\",mitre_attack_ids=\"T1048\",\"Exfiltration\",mitre_attack_ids=\"T1580\",\"Discovery\",mitre_attack_ids=\"T1550\",\"Defense Evasion|Lateral Movement\",mitre_attack_ids=\"T1535\",\"Defense Evasion\",mitre_attack_ids=\"T1072\",\"Execution|Lateral Movement\",mitre_attack_ids=\"T1090\",\"Command And Control\",mitre_attack_ids=\"T1197\",\"Defense Evasion|Persistence\",mitre_attack_ids=\"T1070.001\",\"Defense Evasion\",mitre_attack_ids=\"T1574.006\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1014\",\"Defense Evasion\",mitre_attack_ids=\"T1548.001\",\"Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1555.003\",\"Credential Access\",mitre_attack_ids=\"T1187\",\"Credential Access\",mitre_attack_ids=\"T1547.001\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1113\",\"Collection\",mitre_attack_ids=\"T1553.005\",\"Defense Evasion\",mitre_attack_ids=\"T1559\",\"Execution\",mitre_attack_ids=\"T1071\",\"Command And Control\",mitre_attack_ids=\"T1595.002\",\"Reconnaissance\",mitre_attack_ids=\"T1573.002\",\"Command And Control\",mitre_attack_ids=\"T1590.005\",\"Reconnaissance\",mitre_attack_ids=\"T1499\",\"Impact\",mitre_attack_ids=\"T1021\",\"Lateral Movement\",mitre_attack_ids=\"T1555\",\"Credential Access\",mitre_attack_ids=\"T1087.004\",\"Discovery\",mitre_attack_ids=\"T1571\",\"Command And Control\",mitre_attack_ids=\"T1595\",\"Reconnaissance\",mitre_attack_ids=\"T1119\",\"Collection\",mitre_attack_ids=\"T1554\",\"Persistence\",mitre_attack_ids=\"T1567.002\",\"Exfiltration\",mitre_attack_ids=\"T1552.007\",\"Credential Access\",mitre_attack_ids=\"T1021.007\",\"Lateral Movement\",mitre_attack_ids=\"T1218.003\",\"Defense Evasion\",mitre_attack_ids=\"T1087\",\"Discovery\",mitre_attack_ids=\"T1195.002\",\"Initial Access\",mitre_attack_ids=\"T1059.007\",\"Execution\",mitre_attack_ids=\"T1053.002\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1222.002\",\"Defense Evasion\",mitre_attack_ids=\"T1115\",\"Collection\",mitre_attack_ids=\"T1083\",\"Discovery\",mitre_attack_ids=\"T1098.004\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1053.006\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1102\",\"Command And Control\",mitre_attack_ids=\"T1136\",\"Persistence\",mitre_attack_ids=\"T1550.003\",\"Defense Evasion|Lateral Movement\",mitre_attack_ids=\"T1218.014\",\"Defense Evasion\",mitre_attack_ids=\"T1127.001\",\"Defense Evasion\",mitre_attack_ids=\"T1592\",\"Reconnaissance\",mitre_attack_ids=\"T1134.001\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1134.005\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1557.001\",\"Credential Access|Collection\",mitre_attack_ids=\"T1136.002\",\"Persistence\",mitre_attack_ids=\"T1588.002\",\"Resource Development\",mitre_attack_ids=\"T1091\",\"Lateral Movement|Initial Access\",mitre_attack_ids=\"T1055.002\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1036.008\",\"Defense Evasion\",mitre_attack_ids=\"T1003.008\",\"Credential Access\",mitre_attack_ids=\"T1078.001\",\"Defense Evasion|Persistence|Privilege Escalation|Initial Access\",mitre_attack_ids=\"T1123\",\"Collection\",mitre_attack_ids=\"T1484.002\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1564.008\",\"Defense Evasion\",mitre_attack_ids=\"T1552.002\",\"Credential Access\",mitre_attack_ids=\"T1220\",\"Defense Evasion\",mitre_attack_ids=\"T1560\",\"Collection\",mitre_attack_ids=\"T1546.003\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1127\",\"Defense Evasion\",mitre_attack_ids=\"T1564.003\",\"Defense Evasion\",mitre_attack_ids=\"T1562.012\",\"Defense Evasion\",mitre_attack_ids=\"T1030\",\"Exfiltration\",mitre_attack_ids=\"T1555.005\",\"Credential Access\",mitre_attack_ids=\"T1546.004\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1055.001\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1497.003\",\"Defense Evasion|Discovery\",mitre_attack_ids=\"T1546.015\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1027.011\",\"Defense Evasion\",mitre_attack_ids=\"T1546.011\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1546\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1003.006\",\"Credential Access\",mitre_attack_ids=\"T1564.004\",\"Defense Evasion\",mitre_attack_ids=\"T1071.003\",\"Command And Control\",mitre_attack_ids=\"T1218.008\",\"Defense Evasion\",mitre_attack_ids=\"T1137\",\"Persistence\",mitre_attack_ids=\"T1134\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1025\",\"Collection\",mitre_attack_ids=\"T1553.003\",\"Defense Evasion\",mitre_attack_ids=\"T1557.002\",\"Credential Access|Collection\",mitre_attack_ids=\"T1040\",\"Credential Access|Discovery\",mitre_attack_ids=\"T1557\",\"Credential Access|Collection\",mitre_attack_ids=\"T1562.003\",\"Defense Evasion\",mitre_attack_ids=\"T1673\",\"Tactique à qualifier\",mitre_attack_ids=\"T1485.001\",\"Impact\",mitre_attack_ids=\"T1069.003\",\"Discovery\",mitre_attack_ids=\"T1098.001\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1053.007\",\"Execution|Persistence|Privilege Escalation\",mitre_attack_ids=\"T1212\",\"Credential Access\",mitre_attack_ids=\"T1114\",\"Collection\",mitre_attack_ids=\"T1547.014\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1140\",\"Defense Evasion\",mitre_attack_ids=\"T1611\",\"Privilege Escalation\",mitre_attack_ids=\"T1020\",\"Exfiltration\",mitre_attack_ids=\"T1036.002\",\"Defense Evasion\",mitre_attack_ids=\"T1564.001\",\"Defense Evasion\",mitre_attack_ids=\"T1562.006\",\"Defense Evasion\",mitre_attack_ids=\"T1589.001\",\"Reconnaissance\",mitre_attack_ids=\"T1095\",\"Command And Control\",mitre_attack_ids=\"T1491\",\"Impact\",mitre_attack_ids=\"T1102.002\",\"Command And Control\",mitre_attack_ids=\"T1027.005\",\"Defense Evasion\",mitre_attack_ids=\"T1574.011\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1546.012\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1543.001\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1574\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1546.001\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1070.003\",\"Defense Evasion\",mitre_attack_ids=\"T1552.006\",\"Credential Access\",mitre_attack_ids=\"T1204.001\",\"Execution\",mitre_attack_ids=\"T1564\",\"Defense Evasion\",mitre_attack_ids=\"T1134.004\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1069\",\"Discovery\",mitre_attack_ids=\"T1090.001\",\"Command And Control\",mitre_attack_ids=\"T1561.002\",\"Impact\",mitre_attack_ids=\"T1563.002\",\"Lateral Movement\",mitre_attack_ids=\"T1505\",\"Persistence\",mitre_attack_ids=\"T1036.009\",\"Defense Evasion\",mitre_attack_ids=\"T1090.003\",\"Command And Control\",mitre_attack_ids=\"T1573\",\"Command And Control\",mitre_attack_ids=\"T1556.004\",\"Credential Access|Defense Evasion|Persistence\",mitre_attack_ids=\"T1590.001\",\"Reconnaissance\",mitre_attack_ids=\"T1601.001\",\"Defense Evasion\",mitre_attack_ids=\"T1505.006\",\"Tactique à qualifier\",mitre_attack_ids=\"T1070.006\",\"Defense Evasion\",mitre_attack_ids=\"T1550.004\",\"Defense Evasion|Lateral Movement\",mitre_attack_ids=\"T1538\",\"Discovery\",mitre_attack_ids=\"T1539\",\"Credential Access\",mitre_attack_ids=\"T1586\",\"Resource Development\",mitre_attack_ids=\"T1578.002\",\"Defense Evasion\",mitre_attack_ids=\"T1578.005\",\"Defense Evasion\",mitre_attack_ids=\"T1561.001\",\"Impact\",mitre_attack_ids=\"T1213.002\",\"Collection\",mitre_attack_ids=\"T1552.005\",\"Credential Access\",mitre_attack_ids=\"T1218.002\",\"Defense Evasion\",mitre_attack_ids=\"T1070.005\",\"Defense Evasion\",mitre_attack_ids=\"T1027.004\",\"Defense Evasion\",mitre_attack_ids=\"T1574.009\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1558.001\",\"Credential Access\",mitre_attack_ids=\"T1589.002\",\"Reconnaissance\",mitre_attack_ids=\"T1480\",\"Defense Evasion\",mitre_attack_ids=\"T1059.013\",\"Tactique à qualifier\",mitre_attack_ids=\"T1037.004\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1036.004\",\"Defense Evasion\",mitre_attack_ids=\"T1590\",\"Reconnaissance\",mitre_attack_ids=\"T1037.001\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1059.002\",\"Execution\",mitre_attack_ids=\"T1553.001\",\"Defense Evasion\",mitre_attack_ids=\"T1555.001\",\"Credential Access\",mitre_attack_ids=\"T1037.002\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1647\",\"Defense Evasion\",mitre_attack_ids=\"T1547.010\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1016.001\",\"Discovery\",mitre_attack_ids=\"T1546.008\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1559.001\",\"Execution\",mitre_attack_ids=\"T1546.002\",\"Privilege Escalation|Persistence\",mitre_attack_ids=\"T1074.001\",\"Collection\",mitre_attack_ids=\"T1074\",\"Collection\",mitre_attack_ids=\"T1547.003\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1218.012\",\"Defense Evasion\",mitre_attack_ids=\"T1134.002\",\"Defense Evasion|Privilege Escalation\",mitre_attack_ids=\"T1547.008\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1218.013\",\"Defense Evasion\",mitre_attack_ids=\"T1542.001\",\"Persistence|Defense Evasion\",mitre_attack_ids=\"T1003.005\",\"Credential Access\",mitre_attack_ids=\"T1587.003\",\"Resource Development\",mitre_attack_ids=\"T1564.006\",\"Defense Evasion\",mitre_attack_ids=\"T1555.004\",\"Credential Access\",mitre_attack_ids=\"T1595.001\",\"Reconnaissance\",mitre_attack_ids=\"T1176.001\",\"Tactique à qualifier\",mitre_attack_ids=\"T1590.002\",\"Reconnaissance\",mitre_attack_ids=\"T1654\",\"Discovery\",mitre_attack_ids=\"T1129\",\"Execution\",mitre_attack_ids=\"T1592.001\",\"Reconnaissance\",mitre_attack_ids=\"T1056.002\",\"Collection|Credential Access\",mitre_attack_ids=\"T1003.004\",\"Credential Access\",mitre_attack_ids=\"T1620\",\"Defense Evasion\",mitre_attack_ids=\"T1007\",\"Discovery\",mitre_attack_ids=\"T1039\",\"Collection\",mitre_attack_ids=\"T1027.013\",\"Defense Evasion\",mitre_attack_ids=\"T1008\",\"Command And Control\",mitre_attack_ids=\"T1574.014\",\"Persistence|Privilege Escalation|Defense Evasion\",mitre_attack_ids=\"T1027.010\",\"Defense Evasion\",mitre_attack_ids=\"T1057\",\"Discovery\",mitre_attack_ids=\"T1598.002\",\"Reconnaissance\",mitre_attack_ids=\"T1542\",\"Defense Evasion|Persistence\",mitre_attack_ids=\"T1553.004\",\"Defense Evasion\",mitre_attack_ids=\"T1547.005\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1059.009\",\"Execution\",mitre_attack_ids=\"T1216\",\"Defense Evasion\",mitre_attack_ids=\"T1124\",\"Discovery\",mitre_attack_ids=\"T1547\",\"Persistence|Privilege Escalation\",mitre_attack_ids=\"T1565.001\",\"Impact\",mitre_attack_ids=\"T1542.003\",\"Persistence|Defense Evasion\",mitre_attack_ids=\"T1587.002\",\"Resource Development\",mitre_attack_ids=\"T1588.004\",\"Resource Development\",mitre_attack_ids=\"T1090.002\",\"Command And Control\",mitre_attack_ids=\"T1587.001\",\"Resource Development\",mitre_attack_ids=\"T1598\",\"Reconnaissance\",mitre_attack_ids=\"T1583.006\",\"Resource Development\",mitre_attack_ids=\"T1189\",\"Initial Access\",mitre_attack_ids=\"T1071.002\",\"Command And Control\",mitre_attack_ids=\"T1542.005\",\"Defense Evasion|Persistence\",mitre_attack_ids=\"T1020.001\",\"Exfiltration\",mitre_attack_ids=\"T1498.002\",\"Impact\",true(),\"Tactique à qualifier\") | eval activable=if(match_ratio>=1,1,0) | stats count as règles sum(activable) as activables by tactique | sort - activables - règles",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsRoadmap": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=gaps limit=500 | eval priorité=case(technique_count>=20 OR detection_count>=100,\"P1\",technique_count>=10 OR detection_count>=25,\"P2\",true(),\"P3\") | eval phase=case(priorité=\"P1\",\"0-30 jours\",priorité=\"P2\",\"30-90 jours\",true(),\"Backlog\") | eval raison=\"Débloque \" . detection_count . \" règles et \" . technique_count . \" techniques ATT&CK\" | eval prochaine_action=\"Valider propriétaire, TA/CIM, index cible et prérequis de collecte\" | rename data_source_name as source family as domaine supported_ta_names as TA detection_count as règles technique_count as techniques | sort 0 priorité - techniques - règles source | head $result_limit$ | table priorité phase source domaine règles techniques TA raison prochaine_action",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsRoadmapPhases": {
+      "type": "ds.search",
+      "options": {
+        "query": "| attackcoverageadvisor mode=gaps limit=500 | eval phase=case(technique_count>=20 OR detection_count>=100,\"0-30 jours\",technique_count>=10 OR detection_count>=25,\"30-90 jours\",true(),\"Backlog\") | stats count as sources sum(detection_count) as règles sum(technique_count) as techniques by phase | sort phase",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsSizingDaily": {
+      "type": "ds.search",
+      "options": {
+        "query": "search index=_internal source=*license_usage.log* type=Usage idx=* | bin _time span=1d | stats sum(b) as bytes by _time | eval volume_Go=round(bytes/1024/1024/1024,3) | eval jour=strftime(_time, \"%d/%m\") | table jour volume_Go",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsSizingAvgVolume": {
+      "type": "ds.search",
+      "options": {
+        "query": "search index=_internal source=*license_usage.log* type=Usage idx=* | bin _time span=1d | stats sum(b) as bytes by _time | stats avg(bytes) as avg_bytes | eval value=case(avg_bytes>=1099511627776, round(avg_bytes/1024/1024/1024/1024,2).\" To/j\", avg_bytes>=1073741824, round(avg_bytes/1024/1024/1024,2).\" Go/j\", true(), round(avg_bytes/1024/1024,1).\" Mo/j\") | table value",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    },
+    "dsSizingStats": {
+      "type": "ds.search",
+      "options": {
+        "query": "search index=_internal source=*license_usage.log* type=Usage idx=* | bin _time span=1d | stats sum(b) as bytes by _time | stats count as jours_mesures avg(bytes) as moyenne_bytes max(bytes) as pic_bytes min(bytes) as min_bytes | eval moyenne_jour=case(moyenne_bytes>=1099511627776, round(moyenne_bytes/1024/1024/1024/1024,2).\" To/j\", moyenne_bytes>=1073741824, round(moyenne_bytes/1024/1024/1024,2).\" Go/j\", true(), round(moyenne_bytes/1024/1024,1).\" Mo/j\") | eval pic_jour=case(pic_bytes>=1099511627776, round(pic_bytes/1024/1024/1024/1024,2).\" To/j\", pic_bytes>=1073741824, round(pic_bytes/1024/1024/1024,2).\" Go/j\", true(), round(pic_bytes/1024/1024,1).\" Mo/j\") | eval min_jour=case(min_bytes>=1099511627776, round(min_bytes/1024/1024/1024/1024,2).\" To/j\", min_bytes>=1073741824, round(min_bytes/1024/1024/1024,2).\" Go/j\", true(), round(min_bytes/1024/1024,1).\" Mo/j\") | table jours_mesures moyenne_jour pic_jour min_jour",
+        "queryParameters": {
+          "earliest": "$global_time.earliest$",
+          "latest": "$global_time.latest$"
+        }
+      }
+    }
+  },
+  "visualizations": {
+    "bg": {
+      "type": "splunk.rectangle",
+      "options": {
+        "fillColor": "#050B15",
+        "strokeColor": "transparent"
+      }
+    },
+    "haloTop": {
+      "type": "splunk.rectangle",
+      "options": {
+        "fillColor": "#0E2A43",
+        "strokeColor": "#1E4D72"
+      }
+    },
+    "haloBottom": {
+      "type": "splunk.rectangle",
+      "options": {
+        "fillColor": "#10213A",
+        "strokeColor": "#2D4B74"
+      }
+    },
+    "accent": {
+      "type": "splunk.rectangle",
+      "options": {
+        "fillColor": "#3DFF91",
+        "strokeColor": "transparent"
+      }
+    },
+    "hero": {
+      "type": "splunk.markdown",
+      "options": {
+        "markdown": "# **DSA++ MATURITY ACCELERATOR**\n### Passer du calcul de volumétrie à la conversation risque, use cases et roadmap ES",
+        "fontColor": "#FFFFFF",
+        "backgroundColor": "transparent"
+      }
+    },
+    "heroSub": {
+      "type": "splunk.markdown",
+      "options": {
+        "markdown": "**Méthode équipe** : partir du PvP et des données déjà ingérées, identifier les sources sécurité, relier aux règles ES OOTB, cartographier MITRE ATT&CK, puis construire une roadmap de collecte et de maturité SOC.",
+        "fontColor": "#C9D6EA",
+        "backgroundColor": "transparent"
+      }
+    },
+    "mode": {
+      "type": "splunk.table",
+      "title": "Contexte de lecture",
+      "dataSources": {
+        "primary": "dsContextMode"
+      },
+      "options": {
+        "backgroundColor": "#0B1628",
+        "headerBackgroundColor": "#134E4A",
+        "fontColor": "#EAF2FF",
+        "headerFontColor": "#FFFFFF",
+        "rowNumbers": false,
+        "count": 1
+      }
+    },
+    "kpiScore": {
+      "type": "splunk.singlevalue",
+      "title": "Potentiel DSA++",
+      "dataSources": {
+        "primary": "dsOpportunityScore"
+      },
+      "options": {
+        "majorColor": "#3DFF91",
+        "backgroundColor": "#0D2A23",
+        "sparklineDisplay": "off"
+      }
+    },
+    "kpiObserved": {
+      "type": "splunk.singlevalue",
+      "title": "Sources observées",
+      "dataSources": {
+        "primary": "dsObservedSources"
+      },
+      "options": {
+        "majorColor": "#FFFFFF",
+        "backgroundColor": "#111C2F",
+        "sparklineDisplay": "off"
+      }
+    },
+    "kpiRules": {
+      "type": "splunk.singlevalue",
+      "title": "Règles ES activables",
+      "dataSources": {
+        "primary": "dsActivableDetections"
+      },
+      "options": {
+        "majorColor": "#5EDBFF",
+        "backgroundColor": "#112A43",
+        "sparklineDisplay": "off"
+      }
+    },
+    "kpiMitre": {
+      "type": "splunk.singlevalue",
+      "title": "Techniques MITRE",
+      "dataSources": {
+        "primary": "dsProjectedTechniques"
+      },
+      "options": {
+        "majorColor": "#A78BFA",
+        "backgroundColor": "#1B2146",
+        "sparklineDisplay": "off"
+      }
+    },
+    "kpiMissing": {
+      "type": "splunk.singlevalue",
+      "title": "Sources roadmap",
+      "dataSources": {
+        "primary": "dsMissingSources"
+      },
+      "options": {
+        "majorColor": "#FDBA74",
+        "backgroundColor": "#3A1F17",
+        "sparklineDisplay": "off"
+      }
+    },
+    "methodCard": {
+      "type": "splunk.markdown",
+      "options": {
+        "markdown": "## La bonne posture\nDSA++ n’est pas un tableur de GB/jour. C’est un **atelier de maturité SOC** : risques client, sources déjà présentes, cas d’usage ES, MITRE ATT&CK, puis roadmap priorisée.",
+        "fontColor": "#EAF2FF",
+        "backgroundColor": "transparent"
+      }
+    },
+    "pvpCard": {
+      "type": "splunk.markdown",
+      "options": {
+        "markdown": "## Complément du PvP\nLe PvP donne le contexte et les risques. Le DSA++ apporte la preuve par la donnée : ce que Splunk voit déjà, ce qu’ES peut activer, et quelles sources débloquent la suite.",
+        "fontColor": "#EAF2FF",
+        "backgroundColor": "transparent"
+      }
+    },
+    "flowTable": {
+      "type": "splunk.table",
+      "title": "Déroulé atelier DSA++",
+      "dataSources": {
+        "primary": "dsWorkshopFlow"
+      },
+      "options": {
+        "backgroundColor": "#0B1628",
+        "headerBackgroundColor": "#14532D",
+        "fontColor": "#EAF2FF",
+        "headerFontColor": "#FFFFFF",
+        "rowNumbers": false,
+        "count": 6
+      }
+    },
+    "decisionTable": {
+      "type": "splunk.table",
+      "title": "Décision atelier",
+      "dataSources": {
+        "primary": "dsDecisionGuide"
+      },
+      "options": {
+        "backgroundColor": "#0B1628",
+        "headerBackgroundColor": "#1D4ED8",
+        "fontColor": "#EAF2FF",
+        "headerFontColor": "#FFFFFF",
+        "rowNumbers": false,
+        "count": 4
+      }
+    },
+    "riskQuestions": {
+      "type": "splunk.table",
+      "title": "Questions de conversation client",
+      "dataSources": {
+        "primary": "dsRiskQuestions"
+      },
+      "options": {
+        "backgroundColor": "#0B1628",
+        "headerBackgroundColor": "#7C2D12",
+        "fontColor": "#EAF2FF",
+        "headerFontColor": "#FFFFFF",
+        "rowNumbers": false,
+        "count": 5
+      }
+    },
+    "domainReadiness": {
+      "type": "splunk.table",
+      "title": "Maturité par domaine sécurité",
+      "dataSources": {
+        "primary": "dsDomainReadiness"
+      },
+      "options": {
+        "backgroundColor": "#0B1628",
+        "headerBackgroundColor": "#0E7490",
+        "fontColor": "#EAF2FF",
+        "headerFontColor": "#FFFFFF",
+        "rowNumbers": false,
+        "count": 12
+      }
+    },
+    "sourceChecklist": {
+      "type": "splunk.table",
+      "title": "Checklist sources : observées vs à intégrer",
+      "dataSources": {
+        "primary": "dsSourceChecklist"
+      },
+      "options": {
+        "backgroundColor": "#0B1628",
+        "headerBackgroundColor": "#14532D",
+        "fontColor": "#EAF2FF",
+        "headerFontColor": "#FFFFFF",
+        "rowNumbers": false,
+        "count": 20
+      }
+    },
+    "sourceFamilies": {
+      "type": "splunk.bar",
+      "title": "Sources observées par domaine",
+      "dataSources": {
+        "primary": "dsSourceFamilies"
+      },
+      "options": {
+        "backgroundColor": "transparent",
+        "legendDisplay": "off",
+        "seriesColors": [
+          "#3DFF91"
+        ],
+        "orientation": "horizontal"
+      }
+    },
+    "sourceNote": {
+      "type": "splunk.markdown",
+      "options": {
+        "markdown": "## Lecture des sources\nChaque source doit être reliée à une valeur : règles ES activables, techniques MITRE couvertes, ou use cases à débloquer. La collecte devient une conversation risque, pas une liste technique.",
+        "fontColor": "#D1FAE5",
+        "backgroundColor": "transparent"
+      }
+    },
+    "rulesTable": {
+      "type": "splunk.table",
+      "title": "Règles ES OOTB activables ou proches",
+      "dataSources": {
+        "primary": "dsRulesActivable"
+      },
+      "options": {
+        "backgroundColor": "#0B1628",
+        "headerBackgroundColor": "#0E7490",
+        "fontColor": "#EAF2FF",
+        "headerFontColor": "#FFFFFF",
+        "rowNumbers": false,
+        "count": 20
+      }
+    },
+    "rulesBar": {
+      "type": "splunk.bar",
+      "title": "Règles activables par domaine",
+      "dataSources": {
+        "primary": "dsRulesByDomain"
+      },
+      "options": {
+        "backgroundColor": "transparent",
+        "legendDisplay": "off",
+        "seriesColors": [
+          "#5EDBFF"
+        ],
+        "orientation": "horizontal"
+      }
+    },
+    "rulesNote": {
+      "type": "splunk.markdown",
+      "options": {
+        "markdown": "## Conversation use cases\nLes P1/P2 sont le cœur du rendez-vous : montrer les règles activables avec l’existant, puis discuter tuning, ownership SOC et conditions d’activation.",
+        "fontColor": "#CFFAFE",
+        "backgroundColor": "transparent"
+      }
+    },
+    "mitreTable": {
+      "type": "splunk.table",
+      "title": "Techniques MITRE : couverture projetée",
+      "dataSources": {
+        "primary": "dsMitreTechniques"
+      },
+      "options": {
+        "backgroundColor": "#0B1628",
+        "headerBackgroundColor": "#5B21B6",
+        "fontColor": "#EAF2FF",
+        "headerFontColor": "#FFFFFF",
+        "rowNumbers": false,
+        "count": 20
+      }
+    },
+    "mitreBar": {
+      "type": "splunk.bar",
+      "title": "Tactiques MITRE couvertes",
+      "dataSources": {
+        "primary": "dsMitreTactics"
+      },
+      "options": {
+        "backgroundColor": "transparent",
+        "legendDisplay": "off",
+        "seriesColors": [
+          "#A78BFA"
+        ],
+        "orientation": "horizontal"
+      }
+    },
+    "mitreNote": {
+      "type": "splunk.markdown",
+      "options": {
+        "markdown": "## Lecture MITRE\nMITRE sert à raconter la maturité détection en langage menace. L’objectif n’est pas de cocher toute la matrice, mais de relier les priorités de risque aux comportements adverses détectables.",
+        "fontColor": "#E9D5FF",
+        "backgroundColor": "transparent"
+      }
+    },
+    "roadmapTable": {
+      "type": "splunk.table",
+      "title": "Roadmap sources priorisée par valeur",
+      "dataSources": {
+        "primary": "dsRoadmap"
+      },
+      "options": {
+        "backgroundColor": "#0B1628",
+        "headerBackgroundColor": "#9A3412",
+        "fontColor": "#EAF2FF",
+        "headerFontColor": "#FFFFFF",
+        "rowNumbers": false,
+        "count": 20
+      }
+    },
+    "roadmapBar": {
+      "type": "splunk.bar",
+      "title": "Roadmap par phase",
+      "dataSources": {
+        "primary": "dsRoadmapPhases"
+      },
+      "options": {
+        "backgroundColor": "transparent",
+        "legendDisplay": "off",
+        "seriesColors": [
+          "#FDBA74"
+        ],
+        "orientation": "horizontal"
+      }
+    },
+    "roadmapNote": {
+      "type": "splunk.markdown",
+      "options": {
+        "markdown": "## Sortie attendue\nUn bon DSA++ se termine par un plan : quick wins, sources à onboarder, contenus ES à tester, trajectoire MITRE, et décision sur le niveau de maturité à viser.",
+        "fontColor": "#FED7AA",
+        "backgroundColor": "transparent"
+      }
+    },
+    "kpiAvgIngest": {
+      "type": "splunk.singlevalue",
+      "title": "Moyenne ingestion / jour",
+      "dataSources": {
+        "primary": "dsSizingAvgVolume"
+      },
+      "options": {
+        "majorColor": "#5EDBFF",
+        "backgroundColor": "#0B3B4A",
+        "sparklineDisplay": "off"
+      }
+    },
+    "sizingChart": {
+      "type": "splunk.column",
+      "title": "Volume quotidien ingéré (Go/jour)",
+      "dataSources": {
+        "primary": "dsSizingDaily"
+      },
+      "options": {
+        "backgroundColor": "transparent",
+        "legendDisplay": "off",
+        "seriesColors": [
+          "#5EDBFF"
+        ]
+      }
+    },
+    "sizingStats": {
+      "type": "splunk.table",
+      "title": "Profil capacité d’ingestion",
+      "dataSources": {
+        "primary": "dsSizingStats"
+      },
+      "options": {
+        "backgroundColor": "#0B1628",
+        "headerBackgroundColor": "#1D4ED8",
+        "fontColor": "#EAF2FF",
+        "headerFontColor": "#FFFFFF",
+        "rowNumbers": false,
+        "count": 5
+      }
+    },
+    "sizingNote": {
+      "type": "splunk.markdown",
+      "options": {
+        "markdown": "## Dimensionnement contextualisé\nLa volumétrie est exprimée en capacité d’ingestion moyenne par jour à partir des logs de licence Splunk. Elle cadre l’architecture et la croissance liée à la roadmap. Pricing/licensing : RSM.",
+        "fontColor": "#DBEAFE",
+        "backgroundColor": "transparent"
+      }
+    }
+  },
+  "layout": {
+    "tabs": {
+      "items": [
+        {
+          "layoutId": "layout_maturity",
+          "label": "Maturité DSA++"
+        },
+        {
+          "layoutId": "layout_sources",
+          "label": "Sources"
+        },
+        {
+          "layoutId": "layout_rules",
+          "label": "Règles ES"
+        },
+        {
+          "layoutId": "layout_mitre",
+          "label": "MITRE"
+        },
+        {
+          "layoutId": "layout_roadmap",
+          "label": "Roadmap"
+        },
+        {
+          "layoutId": "layout_sizing",
+          "label": "Sizing"
+        }
+      ]
+    },
+    "layoutDefinitions": {
+      "layout_maturity": {
+        "type": "absolute",
+        "options": {
+          "width": 1600,
+          "height": 900,
+          "backgroundColor": "#050B15"
+        },
+        "structure": [
+          {
+            "item": "bg",
+            "type": "block",
+            "position": {
+              "x": 0,
+              "y": 0,
+              "w": 1600,
+              "h": 900
+            }
+          },
+          {
+            "item": "accent",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 28,
+              "w": 8,
+              "h": 124
+            }
+          },
+          {
+            "item": "hero",
+            "type": "block",
+            "position": {
+              "x": 48,
+              "y": 26,
+              "w": 780,
+              "h": 86
+            }
+          },
+          {
+            "item": "heroSub",
+            "type": "block",
+            "position": {
+              "x": 50,
+              "y": 118,
+              "w": 760,
+              "h": 66
+            }
+          },
+          {
+            "item": "mode",
+            "type": "block",
+            "position": {
+              "x": 1040,
+              "y": 34,
+              "w": 536,
+              "h": 132
+            }
+          },
+          {
+            "item": "kpiScore",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 210,
+              "w": 284,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiObserved",
+            "type": "block",
+            "position": {
+              "x": 328,
+              "y": 210,
+              "w": 284,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiRules",
+            "type": "block",
+            "position": {
+              "x": 632,
+              "y": 210,
+              "w": 284,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiMitre",
+            "type": "block",
+            "position": {
+              "x": 936,
+              "y": 210,
+              "w": 284,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiMissing",
+            "type": "block",
+            "position": {
+              "x": 1240,
+              "y": 210,
+              "w": 284,
+              "h": 112
+            }
+          },
+          {
+            "item": "methodCard",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 350,
+              "w": 492,
+              "h": 142
+            }
+          },
+          {
+            "item": "pvpCard",
+            "type": "block",
+            "position": {
+              "x": 540,
+              "y": 350,
+              "w": 492,
+              "h": 142
+            }
+          },
+          {
+            "item": "decisionTable",
+            "type": "block",
+            "position": {
+              "x": 1040,
+              "y": 350,
+              "w": 536,
+              "h": 154
+            }
+          },
+          {
+            "item": "flowTable",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 536,
+              "w": 748,
+              "h": 340
+            }
+          },
+          {
+            "item": "riskQuestions",
+            "type": "block",
+            "position": {
+              "x": 800,
+              "y": 536,
+              "w": 776,
+              "h": 340
+            }
+          }
+        ]
+      },
+      "layout_sources": {
+        "type": "absolute",
+        "options": {
+          "width": 1600,
+          "height": 980,
+          "backgroundColor": "#050B15"
+        },
+        "structure": [
+          {
+            "item": "bg",
+            "type": "block",
+            "position": {
+              "x": 0,
+              "y": 0,
+              "w": 1600,
+              "h": 980
+            }
+          },
+          {
+            "item": "accent",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 28,
+              "w": 8,
+              "h": 86
+            }
+          },
+          {
+            "item": "hero",
+            "type": "block",
+            "position": {
+              "x": 48,
+              "y": 26,
+              "w": 1000,
+              "h": 82
+            }
+          },
+          {
+            "item": "sourceNote",
+            "type": "block",
+            "position": {
+              "x": 1070,
+              "y": 34,
+              "w": 490,
+              "h": 132
+            }
+          },
+          {
+            "item": "kpiObserved",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiMissing",
+            "type": "block",
+            "position": {
+              "x": 354,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiRules",
+            "type": "block",
+            "position": {
+              "x": 684,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "sourceFamilies",
+            "type": "block",
+            "position": {
+              "x": 1014,
+              "y": 164,
+              "w": 562,
+              "h": 286
+            }
+          },
+          {
+            "item": "sourceChecklist",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 310,
+              "w": 970,
+              "h": 612
+            }
+          },
+          {
+            "item": "domainReadiness",
+            "type": "block",
+            "position": {
+              "x": 1014,
+              "y": 482,
+              "w": 562,
+              "h": 440
+            }
+          }
+        ]
+      },
+      "layout_rules": {
+        "type": "absolute",
+        "options": {
+          "width": 1600,
+          "height": 980,
+          "backgroundColor": "#050B15"
+        },
+        "structure": [
+          {
+            "item": "bg",
+            "type": "block",
+            "position": {
+              "x": 0,
+              "y": 0,
+              "w": 1600,
+              "h": 980
+            }
+          },
+          {
+            "item": "accent",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 28,
+              "w": 8,
+              "h": 86
+            }
+          },
+          {
+            "item": "hero",
+            "type": "block",
+            "position": {
+              "x": 48,
+              "y": 26,
+              "w": 1000,
+              "h": 82
+            }
+          },
+          {
+            "item": "rulesNote",
+            "type": "block",
+            "position": {
+              "x": 1070,
+              "y": 34,
+              "w": 490,
+              "h": 132
+            }
+          },
+          {
+            "item": "kpiRules",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiMitre",
+            "type": "block",
+            "position": {
+              "x": 354,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiScore",
+            "type": "block",
+            "position": {
+              "x": 684,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "rulesBar",
+            "type": "block",
+            "position": {
+              "x": 1014,
+              "y": 164,
+              "w": 562,
+              "h": 286
+            }
+          },
+          {
+            "item": "rulesTable",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 310,
+              "w": 1552,
+              "h": 612
+            }
+          }
+        ]
+      },
+      "layout_mitre": {
+        "type": "absolute",
+        "options": {
+          "width": 1600,
+          "height": 980,
+          "backgroundColor": "#050B15"
+        },
+        "structure": [
+          {
+            "item": "bg",
+            "type": "block",
+            "position": {
+              "x": 0,
+              "y": 0,
+              "w": 1600,
+              "h": 980
+            }
+          },
+          {
+            "item": "accent",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 28,
+              "w": 8,
+              "h": 86
+            }
+          },
+          {
+            "item": "hero",
+            "type": "block",
+            "position": {
+              "x": 48,
+              "y": 26,
+              "w": 1000,
+              "h": 82
+            }
+          },
+          {
+            "item": "mitreNote",
+            "type": "block",
+            "position": {
+              "x": 1070,
+              "y": 34,
+              "w": 490,
+              "h": 132
+            }
+          },
+          {
+            "item": "kpiMitre",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiRules",
+            "type": "block",
+            "position": {
+              "x": 354,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiMissing",
+            "type": "block",
+            "position": {
+              "x": 684,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "mitreBar",
+            "type": "block",
+            "position": {
+              "x": 1014,
+              "y": 164,
+              "w": 562,
+              "h": 286
+            }
+          },
+          {
+            "item": "mitreTable",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 310,
+              "w": 1552,
+              "h": 612
+            }
+          }
+        ]
+      },
+      "layout_roadmap": {
+        "type": "absolute",
+        "options": {
+          "width": 1600,
+          "height": 980,
+          "backgroundColor": "#050B15"
+        },
+        "structure": [
+          {
+            "item": "bg",
+            "type": "block",
+            "position": {
+              "x": 0,
+              "y": 0,
+              "w": 1600,
+              "h": 980
+            }
+          },
+          {
+            "item": "accent",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 28,
+              "w": 8,
+              "h": 86
+            }
+          },
+          {
+            "item": "hero",
+            "type": "block",
+            "position": {
+              "x": 48,
+              "y": 26,
+              "w": 1000,
+              "h": 82
+            }
+          },
+          {
+            "item": "roadmapNote",
+            "type": "block",
+            "position": {
+              "x": 1070,
+              "y": 34,
+              "w": 490,
+              "h": 132
+            }
+          },
+          {
+            "item": "kpiMissing",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiObserved",
+            "type": "block",
+            "position": {
+              "x": 354,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiMitre",
+            "type": "block",
+            "position": {
+              "x": 684,
+              "y": 164,
+              "w": 310,
+              "h": 112
+            }
+          },
+          {
+            "item": "roadmapBar",
+            "type": "block",
+            "position": {
+              "x": 1014,
+              "y": 164,
+              "w": 562,
+              "h": 286
+            }
+          },
+          {
+            "item": "roadmapTable",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 310,
+              "w": 1552,
+              "h": 612
+            }
+          }
+        ]
+      },
+      "layout_sizing": {
+        "type": "absolute",
+        "options": {
+          "width": 1600,
+          "height": 980,
+          "backgroundColor": "#050B15"
+        },
+        "structure": [
+          {
+            "item": "bg",
+            "type": "block",
+            "position": {
+              "x": 0,
+              "y": 0,
+              "w": 1600,
+              "h": 980
+            }
+          },
+          {
+            "item": "accent",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 28,
+              "w": 8,
+              "h": 86
+            }
+          },
+          {
+            "item": "hero",
+            "type": "block",
+            "position": {
+              "x": 48,
+              "y": 26,
+              "w": 1000,
+              "h": 82
+            }
+          },
+          {
+            "item": "sizingNote",
+            "type": "block",
+            "position": {
+              "x": 1070,
+              "y": 34,
+              "w": 490,
+              "h": 132
+            }
+          },
+          {
+            "item": "kpiObserved",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 164,
+              "w": 270,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiRules",
+            "type": "block",
+            "position": {
+              "x": 314,
+              "y": 164,
+              "w": 270,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiMissing",
+            "type": "block",
+            "position": {
+              "x": 604,
+              "y": 164,
+              "w": 270,
+              "h": 112
+            }
+          },
+          {
+            "item": "kpiAvgIngest",
+            "type": "block",
+            "position": {
+              "x": 894,
+              "y": 164,
+              "w": 300,
+              "h": 112
+            }
+          },
+          {
+            "item": "sizingStats",
+            "type": "block",
+            "position": {
+              "x": 1214,
+              "y": 190,
+              "w": 362,
+              "h": 156
+            }
+          },
+          {
+            "item": "sizingChart",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 320,
+              "w": 1552,
+              "h": 420
+            }
+          },
+          {
+            "item": "domainReadiness",
+            "type": "block",
+            "position": {
+              "x": 24,
+              "y": 772,
+              "w": 1552,
+              "h": 172
+            }
+          }
+        ]
+      }
+    },
+    "globalInputs": [
+      "input_time",
+      "input_limit"
+    ],
+    "options": {
+      "showTitleAndDescription": false
+    }
+  }
+}

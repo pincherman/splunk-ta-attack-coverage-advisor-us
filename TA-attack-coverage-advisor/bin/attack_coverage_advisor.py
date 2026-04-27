@@ -48,6 +48,23 @@ def clamp_ratio(numerator: int, denominator: int) -> float:
     return round(float(numerator) / float(denominator), 3)
 
 
+def validate_index_expression(value: str) -> str:
+    """Allow only comma-separated Splunk index names or wildcards.
+
+    The value is later interpolated into metadata searches. Keep the
+    contract intentionally narrow for a distributable TA: letters,
+    numbers, underscore, dash and asterisk only.
+    """
+    cleaned = (value or "*").strip() or "*"
+    for item in [part.strip() for part in cleaned.split(",")]:
+        if not item or not re.fullmatch(r"[A-Za-z0-9_*\-]+", item):
+            raise ValueError(
+                "Invalid index expression. Use comma-separated index "
+                "names with letters, numbers, underscore, dash or '*'."
+            )
+    return cleaned
+
+
 def load_csv(path: Path) -> List[Dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
@@ -101,6 +118,7 @@ class AttackCoverageAdvisorCommand(GeneratingCommand):
             raise ValueError(f"Unsupported mode={mode!r}. Expected one of {sorted(valid_modes)}")
         if self.service is None:
             raise RuntimeError("Splunk service context unavailable. Verify commands.conf requires_srinfo=true.")
+        self.index = validate_index_expression(self.index)
 
         data_sources = load_csv(DATA_SOURCES_LOOKUP)
         detections = load_csv(DETECTIONS_LOOKUP)
@@ -258,7 +276,13 @@ class AttackCoverageAdvisorCommand(GeneratingCommand):
         return rows, present
 
     def _detect_es(self) -> Tuple[bool, str]:
-        search = "| rest /services/apps/local splunk_server=local count=5000 | search name=SplunkEnterpriseSecuritySuite disabled=0 | fields name version label"
+        search = (
+            "| rest /services/apps/local count=5000 "
+            "| search (title=SplunkEnterpriseSecuritySuite OR "
+            "id=*SplunkEnterpriseSecuritySuite* OR label=\"Splunk Enterprise Security\") "
+            "disabled=0 "
+            "| fields title version label disabled"
+        )
         try:
             rows = self._run_oneshot(search)
         except Exception as error:  # pragma: no cover - exercised in Splunk runtime
@@ -289,7 +313,7 @@ class AttackCoverageAdvisorCommand(GeneratingCommand):
             return [summary], set()
 
         search = (
-            "| rest /servicesNS/-/-/saved/searches splunk_server=local count=5000 "
+            "| rest /servicesNS/-/-/saved/searches count=5000 "
             '| search action.correlationsearch.enabled=1 disabled=0 '
             '| fields title eai:acl.app action.correlationsearch.annotations'
         )

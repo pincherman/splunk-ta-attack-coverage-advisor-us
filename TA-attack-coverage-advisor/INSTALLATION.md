@@ -1,17 +1,19 @@
-# Installation Guide, TA-attack-coverage-advisor
+# Installation Guide, DSA++ Maturity Accelerator
 
 ## Purpose
 
-This document explains how to install and validate the
-`TA-attack-coverage-advisor` app on a Splunk Enterprise or Splunk ES
-search head.
+This document explains how to install and validate the `DSA++ Maturity Accelerator` / `TA-attack-coverage-advisor` app on a Splunk Enterprise or Splunk ES search head.
 
-The goal is to make the app easy to deploy for:
+The app is built for DSA++ workshops:
 
 - Splunk SE teams
 - partner teams
 - consulting teams
-- pre-POC assessment workshops
+- PvP follow-up conversations
+- pre-POC security assessment workshops
+- Enterprise Security value and maturity conversations with existing Splunk customers
+
+The goal is to move beyond a pure ingestion sizing conversation and structure the discussion around risk, security use cases, data sources, ES detections, MITRE ATT&CK, roadmap and sizing context.
 
 ---
 
@@ -20,11 +22,15 @@ The goal is to make the app easy to deploy for:
 The package contains:
 
 - the generating command `attackcoverageadvisor`
-- the embedded lookup catalog derived from `security_content`
-- the Dashboard Studio view `attack_coverage_advisor_command_center`
-- the packaged runtime dependencies under `bin/lib/`
+- the embedded lookup catalog derived from Splunk `security_content`
+- the Dashboard Studio v2 view `attack_coverage_advisor_command_center`, rebuilt for the DSA++ maturity workflow
+- packaged runtime dependencies under `bin/lib/`
 
 No runtime internet access is required once the app is installed.
+
+Results are directional and intended for SE workshop qualification; they are not contractual coverage or licensing commitments.
+
+For the French SE usage playbook, customer talk-track, interpretation rules and guardrails, read [`GUIDE_UTILISATION_FR.md`](GUIDE_UTILISATION_FR.md).
 
 ---
 
@@ -37,6 +43,8 @@ Minimum expected target:
 - Splunk Enterprise 10.x or recent equivalent
 - access to Splunk Web or Splunk management port `8089`
 - a user allowed to install apps and access REST endpoints
+
+Enterprise Security is not required for the projection mode, but if ES is installed the app can also provide a directional view of enabled correlation searches.
 
 ---
 
@@ -60,6 +68,7 @@ TA-attack-coverage-advisor/
   metadata/
   README.md
   INSTALLATION.md
+  GUIDE_UTILISATION_FR.md
 ```
 
 ---
@@ -68,53 +77,27 @@ TA-attack-coverage-advisor/
 
 ## Method A, Splunk Web upload, recommended when SSH is not available
 
-Use this method when you can access Splunk Web but do not have shell
-access to the target host.
-
-### Steps
-
 1. Log in to Splunk Web as an admin-capable user.
-2. Open:
-   - **Apps**
-   - **Manage Apps**
+2. Open **Apps** → **Manage Apps**.
 3. Click **Install App From File**.
 4. Upload `TA-attack-coverage-advisor.tgz`.
 5. If upgrading an existing copy, enable **Upgrade app**.
 6. Click **Upload**.
 
-### Expected result
-
-Splunk displays a success message similar to:
+Expected result:
 
 ```text
 Install - Success
-DSA, Data Source Assessment has been successfully installed.
+DSA++ Maturity Accelerator has been successfully installed.
 ```
-
----
 
 ## Method B, manual filesystem deployment, recommended when SSH is available
-
-Use this method when you have OS access to the Splunk host.
-
-### Steps
-
-1. Copy the package to the target server.
-2. Extract it into the Splunk apps directory.
-
-Typical target path:
-
-```bash
-/opt/splunk/etc/apps/
-```
-
-Example:
 
 ```bash
 sudo tar -xzf TA-attack-coverage-advisor.tgz -C /opt/splunk/etc/apps
 ```
 
-If an older copy already exists and you want a clean replacement:
+For a clean replacement:
 
 ```bash
 sudo rm -rf /opt/splunk/etc/apps/TA-attack-coverage-advisor
@@ -125,9 +108,7 @@ sudo tar -xzf TA-attack-coverage-advisor.tgz -C /opt/splunk/etc/apps
 
 ## 5. Reload after install
 
-After installation, reload the relevant Splunk objects.
-
-### Recommended REST reload sequence
+Recommended REST reload sequence:
 
 ```bash
 curl -k -u <user>:<password> -X POST https://<splunk-host>:8089/services/apps/local/_reload
@@ -136,16 +117,13 @@ curl -k -u <user>:<password> -X POST https://<splunk-host>:8089/servicesNS/nobod
 curl -k -u <user>:<password> -X POST https://<splunk-host>:8089/services/admin/commandsconf/_reload
 ```
 
-If your environment prefers a restart policy, a Splunk restart also works,
-but the reload sequence is lighter and was sufficient in validation.
+A Splunk restart also works if it matches the target environment policy.
 
 ---
 
 ## 6. Validate the install
 
 ## 6.1 Validate the app exists
-
-Check the app through the REST API:
 
 ```bash
 curl -k -u <user>:<password> \
@@ -169,10 +147,12 @@ http://<splunk-host>:8000/en-US/app/TA-attack-coverage-advisor/attack_coverage_a
 
 You should see the dashboard with these tabs:
 
-- Synthèse
-- Audit
-- Activations rapides
-- Plan de collecte
+- Maturité DSA++
+- Sources
+- Règles ES
+- MITRE
+- Roadmap
+- Sizing
 
 ---
 
@@ -204,9 +184,15 @@ Useful follow-up tests:
 | attackcoverageadvisor mode=gaps limit=20
 ```
 
+If Enterprise Security is installed:
+
+```spl
+| attackcoverageadvisor mode=current
+```
+
 ---
 
-## 8. How to interpret the result after install
+## 8. How to interpret the result
 
 The dashboard can operate in two normal modes.
 
@@ -215,126 +201,45 @@ The dashboard can operate in two normal modes.
 If ES is detected correctly, the app can expose:
 
 - observed telemetry
-- current ES coverage view
-- activable but non-active content
-- strategic gaps
+- enabled ES correlation searches mapped directionally to the bundled catalog
+- additional ES detections activable or nearly activable
+- missing sources that unlock further coverage
 
-## 8.2 ES not detected, degraded `DSA++ classique` mode
+Use this to drive adoption and maturity conversations.
 
-If ES is not detected, the app still remains useful.
+## 8.2 ES not detected
 
-In that case, the report is intentionally presented as:
+If ES is not installed, the app runs in DSA++ projection mode:
 
-- a **real telemetry assessment**
-- plus a **projected ES value**
-- plus a **prioritized collection roadmap**
+- it starts from telemetry already indexed in Splunk
+- it maps that telemetry to ES OOTB detection potential
+- it shows quick wins and source gaps
+- it helps create the business and technical case for ES
 
-This is not a failure mode. It is a valid mode for:
-
-- pre-sales
-- partner workshops
-- consulting assessments
-- ES qualification before adoption
+This is expected for Enterprise-only customers.
 
 ---
 
-## 9. Recommended installation checklist
+## 9. Workshop flow
 
-Before declaring the install complete, confirm all of the following:
+Recommended DSA++ workshop sequence:
 
-- app is present under `services/apps/local`
-- dashboard view exists under `data/ui/views`
-- command `attackcoverageadvisor` runs without import errors
-- dashboard opens in Splunk Web
-- at least one test mode returns rows
-- the operator understands the difference between:
-  - observed now
-  - projected with ES
+1. Start with the **Maturité DSA++** tab to frame the conversation with risk and use cases.
+2. Use **Sources** to validate what Splunk already sees.
+3. Use **Règles ES** to show immediate or near-term ES value.
+4. Use **MITRE** to translate detections into threat behavior and maturity.
+5. Use **Roadmap** to prioritize missing sources.
+6. Use **Sizing** to contextualize volume and architecture.
 
 ---
 
-## 10. Troubleshooting
+## 10. Guardrails
 
-## Problem, app uploads but does not appear
+- The dashboard is an accelerator, not a contractual audit.
+- Activable detections still require validation, tuning and ownership before production.
+- Partial detections do not prove all prerequisites are met.
+- Custom customer detections may be unmapped.
+- Pricing/licensing belongs with the RSM.
+- Implementation commitments belong with PS.
 
-Check:
-
-- app reload completed
-- permissions of the installed app directory
-- package root contains the app folder and not only its contents
-
-## Problem, dashboard opens but is empty
-
-Check:
-
-- command reload was executed
-- the user can run metadata and rest searches
-- the selected time range is broad enough
-
-## Problem, `current` mode looks incomplete
-
-This is the most fragile part of the V1.
-
-Check:
-
-- ES is actually installed and enabled
-- REST visibility on saved searches is available
-- detection annotations exist when expected
-
-Until that part is fully hardened, treat `current` as informative,
-not contractual.
-
-## Problem, users confuse real data and projection
-
-Use the dashboard legend and say explicitly:
-
-- **Observed now** = real telemetry seen in Splunk
-- **Projected with ES** = value calculated from that real telemetry
-
----
-
-## 11. Proven validation paths
-
-The app has been validated through two concrete deployment patterns:
-
-### Pattern 1
-
-- install on a host with SSH access
-- extract under `/opt/splunk/etc/apps`
-- reload app, views, nav, commands
-
-### Pattern 2
-
-- install through Splunk Web
-- **Apps > Manage Apps > Install App From File**
-- validate app + dashboard through REST and UI
-
-Both patterns were successfully used on live Splunk instances.
-
----
-
-## 12. Community sharing recommendation
-
-If you publish this TA for a wider Splunk audience, keep the public repo
-focused on:
-
-- the app itself
-- the README
-- this installation guide
-- the technical operator guide
-- optional screenshots
-
-Do not publish:
-
-- customer credentials
-- customer hostnames that should remain private
-- internal-only demo data that should not leave the workspace
-
----
-
-## 13. Minimal operator message
-
-If you need one sentence to explain the app after install:
-
-> This TA turns observed Splunk telemetry into a DSA assessment, an ES
-> value projection, and a prioritized collection roadmap.
+See also the French usage guide: [`GUIDE_UTILISATION_FR.md`](GUIDE_UTILISATION_FR.md).

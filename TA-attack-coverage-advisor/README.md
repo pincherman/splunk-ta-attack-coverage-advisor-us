@@ -1,126 +1,64 @@
-# TA-attack-coverage-advisor
+# DSA++ Maturity Accelerator
 
-Splunk TA for a sales-engineering ATT&CK coverage conversation:
+Splunk TA and Dashboard Studio app for DSA++ workshops with existing Splunk customers.
 
-- inventory customer telemetry actually indexed on the search head,
-- compare that telemetry to the Splunk `security_content` detection catalog,
-- expose current enabled ES coverage when ES is installed,
-- surface activable but non-enabled content,
-- highlight missing strategic sources and their projected ATT&CK unlock.
+The goal is to reproduce the team DSA++ method inside Splunk: start from the PvP/risk conversation, objectify the data sources already indexed, map them to Enterprise Security OOTB detections and MITRE ATT&CK, then produce a prioritized collection roadmap and sizing context.
 
-The TA is intentionally V1: pragmatic, self-contained, and credible enough for customer workshops and internal challenge sessions.
+This is not a contractual coverage engine and not a pricing tool. It is an SE workshop accelerator for DSA++, ES discovery, pre-POC qualification, partner workshops and maturity conversations.
 
-## Operator Documentation
+> Documentation française d’usage : see [`GUIDE_UTILISATION_FR.md`](GUIDE_UTILISATION_FR.md) for the SE workshop playbook, interpretation rules, customer talk-track, guardrails and SPL examples.
 
-For the explicit French technical user guide used by SE / partner / consulting populations, see:
+## Positioning
 
-- `../docs/dsa-assessment-technical-guide-en.md`
+The app answers six customer-facing questions:
 
-For the installation and deployment procedure, see:
+1. **What risks and SOC use cases should we discuss first?**
+2. **Which security data sources are already visible in Splunk?**
+3. **Which Splunk Enterprise Security detections become credible with the current telemetry?**
+4. **Which MITRE ATT&CK techniques/tactics are covered or blocked?**
+5. **Which missing sources unlock the most detection value?**
+6. **What ingestion profile should frame the sizing and roadmap discussion?**
 
-- `INSTALLATION.md`
+The desired message is not “you need more GB/day”. The desired message is:
 
-These guides explain:
-
-- what is observed now vs projected with ES,
-- how to read the degraded `DSA++ classique` mode,
-- how to interpret the dashboard and search command outputs,
-- how to run a credible customer assessment workshop,
-- how to install the app through Splunk Web or direct filesystem deployment.
+> Your current Splunk data already contains security value. DSA++ shows how Enterprise Security can operationalize it into detections, investigation, triage, risk-based alerting and a realistic roadmap.
 
 ## What It Ships
 
 - `bin/attack_coverage_advisor.py`
-  - custom generating search command `attackcoverageadvisor`
+  - generating search command `attackcoverageadvisor`
+- `default/data/ui/views/attack_coverage_advisor_command_center.xml`
+  - Dashboard Studio v2 view `attack_coverage_advisor_command_center`
 - `bin/attack_coverage_catalog_builder.py`
   - helper script to regenerate embedded lookup CSVs from a local `security_content` clone
 - `bin/validate_local.py`
-  - local validation helper for syntax, package structure, and catalog regeneration
-- `lookups/attack_coverage_data_sources.csv`
-  - normalized data source catalog generated from `security_content/data_sources/*.yml`
-- `lookups/attack_coverage_detections.csv`
-  - normalized detection catalog generated from `security_content/detections/**/*.yml`
-- `lookups/attack_coverage_detection_data_sources.csv`
-  - flattened detection-to-data-source mapping
+  - local syntax, package and catalog validation helper
+- `lookups/*.csv`
+  - embedded catalog derived from Splunk `security_content`
+- `bin/lib/splunklib/`
+  - vendored Splunk SDK dependency for runtime portability
 
-Runtime does not require internet access. The packaged CSVs are embedded in the TA, and `splunklib` is vendored under `bin/lib/` so the search command stays portable on a Splunk search head.
+Runtime does not require internet access.
 
-## Architecture
+## Dashboard Tabs
 
-### 1. Indexed data source inventory
-
-The command uses Splunk-native metadata searches on the search head:
-
-- `| metadata type=sourcetypes ...`
-- `| metadata type=sources ...`
-
-Observed `sourcetype` and `source` values are matched to the embedded `security_content` data source catalog.
-
-### 2. Current and potential coverage
-
-If Enterprise Security is installed, the command checks:
-
-- app presence via `| rest /services/apps/local`
-- enabled correlation searches via `| rest /servicesNS/-/-/saved/searches`
-
-Enabled detections are name-matched against the bundled `security_content` snapshot, then enriched from live `action.correlationsearch.annotations` when ATT&CK technique IDs are present.
-
-Potential coverage is calculated from catalog detections that are not currently active:
-
-- `activable`
-  - all mapped data sources are already present
-- `partial`
-  - some mapped data sources are present, but companion telemetry may still be missing
-
-If ES is not installed, the command degrades to a what-if mode and answers:
-
-- what would be activable if ES content were adopted,
-- which telemetry gaps would unlock the next ATT&CK steps.
-
-### 3. Strategic gaps
-
-For each missing catalog data source, the command estimates:
-
-- detections that would become immediately ready if that source were onboarded,
-- additional detections where it would be a strong contributing source,
-- ATT&CK technique IDs associated with that missing telemetry.
-
-This is intentionally directional, not a contractual readiness engine.
+- **Maturité DSA++** — workshop storyline: PvP, risk questions, data proof, decision guide.
+- **Sources** — observed sources versus sources to integrate, with TA/CIM actions.
+- **Règles ES** — ES OOTB rules that are activable or close to activable.
+- **MITRE** — projected ATT&CK techniques and tactics, explained for the customer conversation.
+- **Roadmap** — missing sources prioritized by detections and ATT&CK value unlocked.
+- **Sizing** — observed ingestion trend and statistics to frame collection and architecture discussions.
 
 ## Search Command
-
-### Syntax
 
 ```spl
 | attackcoverageadvisor mode=<summary|inventory|current|potential|gaps|full> index=<*> earliest=<-30d> latest=<now> limit=<25> include_partial=<true|false> include_experimental=<true|false>
 ```
 
-`include_experimental=true` only has an effect if the embedded lookup snapshot was generated with `--include-experimental`.
-
-### Modes
-
-- `summary`
-  - compact roll-up for current posture, potential unlock, and strategic gaps
-- `inventory`
-  - observed mapped data sources present in indexed telemetry
-- `current`
-  - enabled ES detections mapped to the bundled catalog
-- `potential`
-  - non-active detections that current telemetry could support
-- `gaps`
-  - missing telemetry sources ranked by ATT&CK expansion potential
-- `full`
-  - summary + inventory + current + potential + gaps
-
-### Suggested SPL
+Examples:
 
 ```spl
 | attackcoverageadvisor mode=summary
-```
-
-```spl
-| attackcoverageadvisor mode=current limit=100
-| table detection_name mitre_attack_ids technique_count reason
 ```
 
 ```spl
@@ -130,41 +68,28 @@ This is intentionally directional, not a contractual readiness engine.
 
 ```spl
 | attackcoverageadvisor mode=gaps limit=20
-| table data_source_name technique_count detection_count reason recommendation supported_ta_names
+| table data_source_name technique_count detection_count supported_ta_names recommendation
 ```
 
-```spl
-| attackcoverageadvisor mode=full index=main,summary earliest=-90d
-| table section status family data_source_name detection_name mitre_attack_ids technique_count reason recommendation
-```
+## Modes
 
-## Output Fields
+- `summary` — compact roll-up for the dashboard and executive storyline.
+- `inventory` — observed mapped data sources present in indexed telemetry.
+- `current` — enabled ES correlation searches mapped to the bundled catalog when ES is installed and accessible.
+- `potential` — ES detections not active today but supported or partly supported by current telemetry.
+- `gaps` — missing telemetry sources ranked by potential detection/ATT&CK value.
+- `full` — summary + inventory + current + potential + gaps.
 
-Core fields are stable across modes:
+## Important Interpretation Rules
 
-- `section`
-- `status`
-- `family`
-- `data_source_name`
-- `detection_name`
-- `mitre_attack_ids`
-- `technique_count`
-- `reason`
-- `recommendation`
-
-Additional helper fields:
-
-- `scenario`
-- `es_installed`
-- `matched_data_source_count`
-- `required_data_source_count`
-- `match_ratio`
-- `detection_count`
-- `supported_ta_names`
-- `supported_ta_versions`
-- `catalog_status`
-- `inventory_match`
-- `search_window`
+- **Observed now** means telemetry actually visible through Splunk metadata on the search head.
+- **Projected with ES** means catalog-based value estimation from Splunk `security_content` mappings.
+- **Activable** means mapped data sources are visible; the detection still needs validation, tuning and ownership before production.
+- **Partial** means at least one mapped source is present; it does not prove every prerequisite is production-ready.
+- `current` ES coverage is directional. It uses enabled correlation searches, catalog name matching and live ES annotations when present.
+- Customer custom detections outside the bundled catalog may be partially represented or unmapped.
+- Results are **directional and workshop-oriented**, not contractual coverage or licensing commitments.
+- Pricing/licensing belongs with the RSM. Implementation plans belong with PS when they become project commitments.
 
 ## Local Validation
 
@@ -176,15 +101,13 @@ python3 TA-attack-coverage-advisor/bin/validate_local.py \
 
 ## Lookup Regeneration
 
-Default source path is `/tmp/security_content`.
-
 ```bash
 python3 TA-attack-coverage-advisor/bin/attack_coverage_catalog_builder.py \
   --security-content /tmp/security_content \
   --output-dir TA-attack-coverage-advisor/lookups
 ```
 
-To also include experimental detections in the packaged catalog:
+To include experimental detections in the packaged catalog:
 
 ```bash
 python3 TA-attack-coverage-advisor/bin/attack_coverage_catalog_builder.py \
@@ -193,24 +116,11 @@ python3 TA-attack-coverage-advisor/bin/attack_coverage_catalog_builder.py \
   --include-experimental
 ```
 
-## Limits
-
-- Active ES mapping still starts from a bundled `security_content` name match. Live `action.correlationsearch.annotations` improves ATT&CK fidelity, but custom detections outside the catalog can still remain only partially represented.
-- `partial` means at least one mapped source is present, not that every prerequisite is proven.
-- Gap ranking is directional. Some detections associated with a missing source may still require additional telemetry.
-- Inventory relies on `metadata` visibility for the executing user.
-- ES current-state analysis relies on REST visibility for saved searches.
-- This V1 does not inspect custom customer detection content outside the name-matched bundled catalog.
-
-## Packaging Notes
-
-- Search head native
-- No runtime internet dependency
-- No modification of unrelated apps required
-- Generated lookups are embedded so the TA remains portable
-- `splunklib` is vendored under `bin/lib/` for runtime portability
-
 ## References
 
+- French usage guide: [`GUIDE_UTILISATION_FR.md`](GUIDE_UTILISATION_FR.md)
+- Splunk Security Content: https://github.com/splunk/security_content
+- Security Content data sources: https://github.com/splunk/security_content/tree/develop/data_sources
+- Splunk ES overview: https://help.splunk.com/en/splunk-enterprise-security-8/user-guide/8.5/introduction/about-splunk-enterprise-security
 - Splunk ES detection annotations: https://help.splunk.com/en/splunk-enterprise-security-8/administer/8.2/detections/add-annotations-to-detections-in-splunk-enterprise-security
-- Splunk Security Essentials MITRE dashboard logic: https://help.splunk.com/en/splunk-enterprise-security-8/security-essentials/use-splunk-security-essentials/3.8/use-the-analytics-advisor-in-splunk-security-essentials/the-mitre-attck-framework-dashboard
+- MITRE ATT&CK in Splunk Security Essentials: https://help.splunk.com/en/splunk-enterprise-security-8/security-essentials/use-splunk-security-essentials/3.8/use-the-analytics-advisor-in-splunk-security-essentials/the-mitre-attck-framework-dashboard
